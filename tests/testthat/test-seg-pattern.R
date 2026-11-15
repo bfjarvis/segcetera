@@ -37,3 +37,17 @@ test_that("equal scores pair low-resource agents with high-utility locations", {
   expect_identical(order(pattern$resource), order(pattern$score))
   expect_identical(order(pattern$x^2 + pattern$y^2), order(pattern$score))
 })
+test_that("score coefficients override named defaults only", {
+  run <- function(...) withr::with_seed(42, seg_pattern(N = 40, noise.agents = 0, ...))
+  expect_identical(run(), run(coef.score = c(group = 0, resource = 1, status = 0)))
+  expect_identical(run(), run(coef.score = c(9, 8)))
+  expect_identical(run(coef.score = c(status = 2, 9)),
+                   run(coef.score = c(resource = 1, status = 2, group = 0)))
+  pattern <- run(coef.score = c(resource = -1))
+  expect_identical(order(pattern$resource, decreasing = TRUE), order(pattern$score))
+  expect_error(run(coef.score = c(resources = 1)), "Unknown.*resources")
+  expect_error(run(coef.score = c(status = 1, status = 0)), "unique")
+  expect_error(run(coef.score = c(group = Inf)), "finite")
+  expect_error(run(coef.score = c(group = "1")), "numeric vector")
+  expect_error(run(coef.score = setNames(1, NA_character_)), "must not be NA")
+})

@@ -18,6 +18,10 @@
 #'   scores used to assign status, group, and the final agent rank.
 #' @param noise.location Nonnegative standard deviation of noise added when
 #'   selecting which candidate locations to retain.
+#' @param coef.score Numeric weights for the standardized attributes in the
+#'   final agent score. Supply any subset of the names `resource`, `status`,
+#'   and `group`. Omitted coefficients retain defaults of 1, 0, and 0,
+#'   respectively. Unnamed entries are ignored.
 #' @details The mean and Gini are distribution parameters; realized sample
 #'   values vary. Category sizes are rounded to integers by assigning
 #'   remaining agents to categories with the largest fractional remainders.
@@ -44,8 +48,36 @@ seg_pattern <- function(
   status = c(low = 1, middle = 1, upper = 1),
   group = c(B = 1, A = 1),
   noise.agents = 1,
-  noise.location = 1
+  noise.location = 1,
+  coef.score = NULL
 ) {
+  coefficients <- c(resource = 1, status = 0, group = 0)
+  if (!is.null(coef.score)) {
+    if (!is.numeric(coef.score) || !is.null(dim(coef.score))) {
+      stop("'coef.score' must be a numeric vector", call. = FALSE)
+    }
+    labels <- names(coef.score)
+    if (!is.null(labels)) {
+      if (anyNA(labels)) {
+        stop("'coef.score' names must not be NA", call. = FALSE)
+      }
+      named <- nzchar(labels)
+      keys <- labels[named]
+      unknown <- setdiff(keys, names(coefficients))
+      if (length(unknown)) {
+        stop("Unknown 'coef.score' name(s): ", paste(unknown, collapse = ", "),
+             ". Use resource, status, or group.", call. = FALSE)
+      }
+      if (anyDuplicated(keys)) {
+        stop("'coef.score' names must be unique", call. = FALSE)
+      }
+      if (any(!is.finite(coef.score[named]))) {
+        stop("Named 'coef.score' values must be finite", call. = FALSE)
+      }
+      coefficients[keys] <- coef.score[named]
+    }
+  }
+
   scalars <- list(
     N = N,
     side = side,
@@ -149,8 +181,9 @@ seg_pattern <- function(
     noise.agents
   )]
   score <- fuzzy_rank(
-    standardize(resource) +
-      standardize(as.integer(status) + standardize(as.integer(group))),
+    coefficients[["resource"]] * standardize(resource) +
+      coefficients[["status"]] * standardize(as.integer(status)) +
+      coefficients[["group"]] * standardize(as.integer(group)),
     noise.agents
   )
 

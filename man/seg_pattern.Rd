@@ -14,7 +14,8 @@ seg_pattern(
   status = c(low = 1, middle = 1, upper = 1),
   group = c(B = 1, A = 1),
   noise.agents = 1,
-  noise.location = 1
+  noise.location = 1,
+  coef.score = NULL
 )
 }
 \arguments{
@@ -40,6 +41,11 @@ scores used to assign status, group, and the final agent rank.}
 
 \item{noise.location}{Nonnegative standard deviation of noise added when
 selecting which candidate locations to retain.}
+
+\item{coef.score}{Numeric weights for the standardized attributes in the
+final agent score. Supply any subset of the names `resource`, `status`,
+and `group`. Omitted coefficients retain defaults of 1, 0, and 0,
+respectively. Unnamed entries are ignored.}
 }
 \value{
 A data frame with one row per retained location and its assigned
