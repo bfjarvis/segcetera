@@ -3,48 +3,48 @@ test_that("categorical column shorthand agrees with explicit specifications", {
     race = c("a", "b", "a", "b"), residents = c(2, 3, 4, 1),
     a = c(2, 0, 4, 0), b = c(0, 3, 0, 1))
   expect_message(
-    micro <- spseg(d, "race", coords = c("x", "y"),
+    micro <- seg_measure(d, "race", coords = c("x", "y"),
       population = "residents", bands = c(0, 2), output = "full"),
     "Assuming categorical observed memberships.*observed category memberships"
   )
-  explicit <- spseg(d, list(race = spseg_categorical(vars = "race")),
+  explicit <- seg_measure(d, list(race = seg_categorical(vars = "race")),
     coords = c("x", "y"), population = "residents", bands = c(0, 2),
     output = "full")
   expect_identical(names(micro$analyses), "race")
   expect_equal(micro$analyses, explicit$analyses)
   expect_message(
-    counts <- spseg(d, c("a", "b"), coords = c("x", "y"),
+    counts <- seg_measure(d, c("a", "b"), coords = c("x", "y"),
       bands = c(0, 2), output = "full"),
     "Assuming aggregated categorical data.*category counts"
   )
-  explicit_counts <- spseg(d,
-    list(categorical = spseg_categorical(vars = c("a", "b"))),
+  explicit_counts <- seg_measure(d,
+    list(categorical = seg_categorical(vars = c("a", "b"))),
     coords = c("x", "y"), bands = c(0, 2), output = "full")
   expect_identical(names(counts$analyses), "categorical")
   expect_equal(counts$analyses, explicit_counts$analyses)
   expect_equal(micro$analyses$race$indices, counts$analyses$categorical$indices)
 
   points <- sf::st_as_sf(d, coords = c("x", "y"))
-  expect_message(spatial <- spseg(points, c("a", "b"),
+  expect_message(spatial <- seg_measure(points, c("a", "b"),
     bands = c(0, 2), output = "full"), "Assuming aggregated")
   expect_equal(spatial$analyses, counts$analyses)
   expect_equal(spatial$geometry, sf::st_geometry(points))
-  expect_message(separate <- spseg(as.matrix(d[c("x", "y")]), c("a", "b"),
+  expect_message(separate <- seg_measure(as.matrix(d[c("x", "y")]), c("a", "b"),
     data = d, bands = c(0, 2), output = "full"), "Assuming aggregated")
   expect_equal(separate$analyses, counts$analyses)
   expect_error(expect_message(
-    spseg(d, "absent", coords = c("x", "y"), bands = 0),
+    seg_measure(d, "absent", coords = c("x", "y"), bands = 0),
     "Assuming categorical"), "Unknown column")
   for (columns in list(character(), NA_character_, "", c("a", "a"))) {
-    expect_error(spseg(d, columns, coords = c("x", "y"), bands = 0),
+    expect_error(seg_measure(d, columns, coords = c("x", "y"), bands = 0),
       "non-empty, non-missing, and unique")
   }
-  expect_message(spseg(d, list(race = spseg_categorical(vars = "race")),
+  expect_message(seg_measure(d, list(race = seg_categorical(vars = "race")),
     coords = c("x", "y"), bands = 0), NA)
 })
 
 test_that("vars selects observed columns or ordered count columns", {
-  for (constructor in list(spseg_categorical, spseg_ordinal, spseg_continuous)) {
+  for (constructor in list(seg_categorical, seg_ordinal, seg_continuous)) {
     observed <- constructor("race")
     expect_identical(observed$values, "race")
     expect_null(observed$counts)
@@ -75,11 +75,11 @@ test_that("weighted long-form categories agree with wide neighborhood counts", {
     race = rep(groups, nrow(wide)),
     n = as.vector(t(as.matrix(wide[groups]))))
   for (weighting in c("unweighted", "biweight")) {
-    counts <- spseg(wide, list(race = spseg_categorical(vars = groups)),
+    counts <- seg_measure(wide, list(race = seg_categorical(vars = groups)),
       coords = c("x", "y"), bands = c(0, 2, 10),
       weighting = weighting, output = "full")
-    members <- spseg(long,
-      list(race = spseg_categorical(vars = "race", weights = "n")),
+    members <- seg_measure(long,
+      list(race = seg_categorical(vars = "race", weights = "n")),
       coords = c("x", "y"), bands = c(0, 2, 10),
       weighting = weighting, output = "full")
     expect_equal(members$analyses$race$indices, counts$analyses$race$indices,
@@ -94,12 +94,12 @@ test_that("weighted long-form categories agree with wide neighborhood counts", {
 
 test_that("the variable interface is required and returns one result class", {
   d <- data.frame(x=1:4,y=0,a=c(1,2,3,4),b=c(4,3,2,1))
-  vars <- list(groups=spseg_categorical(vars=c("a","b")))
-  expect_error(spseg(d,coords=c("x","y"),bands=1), "variables")
-  expect_error(spseg(as.matrix(d[c("x","y")]),as.matrix(d[c("a","b")]),bands=1),
+  vars <- list(groups=seg_categorical(vars=c("a","b")))
+  expect_error(seg_measure(d,coords=c("x","y"),bands=1), "variables")
+  expect_error(seg_measure(as.matrix(d[c("x","y")]),as.matrix(d[c("a","b")]),bands=1),
                "named list|named.*list")
-  result <- spseg(d,vars,coords=c("x","y"),bands=1,output="full")
-  expect_identical(class(result), "spseg_result")
+  result <- seg_measure(d,vars,coords=c("x","y"),bands=1,output="full")
+  expect_identical(class(result), "seg_result")
   expect_setequal(names(result$analyses$groups$indices$overall),c("d","h","r","s","p"))
   expect_null(result$indices)
   expect_null(result$env)
@@ -109,12 +109,12 @@ test_that("the variable interface is required and returns one result class", {
 })
 
 test_that("three constructors distinguish exact and interval continuous input", {
-  exports <- getNamespaceExports("spseg")
-  expect_true(all(c("spseg_categorical","spseg_continuous","spseg_ordinal") %in% exports))
-  expect_false("spseg_grouped" %in% exports)
-  expect_false(exists("spseg_grouped",envir=asNamespace("spseg"),inherits=FALSE))
-  exact <- spseg_continuous(vars="income")
-  intervals <- spseg_continuous(vars="band",representation="intervals")
+  exports <- getNamespaceExports("segcetera")
+  expect_true(all(c("seg_categorical","seg_continuous","seg_ordinal") %in% exports))
+  expect_false("seg_grouped" %in% exports)
+  expect_false(exists("seg_grouped",envir=asNamespace("segcetera"),inherits=FALSE))
+  exact <- seg_continuous(vars="income")
+  intervals <- seg_continuous(vars="band",representation="intervals")
   expect_identical(exact$type,"continuous")
   expect_identical(intervals$type,"continuous")
   expect_identical(exact$representation,"auto")
@@ -129,16 +129,16 @@ test_that("interval membership and counts give the same continuous calculation",
   columns <- c("low","middle","high")
   for(label in columns) d[[label]] <- ifelse(d$band==label,d$w,0)
   variables <- list(
-    members=spseg_continuous(vars="band",weights="w",representation="intervals",
+    members=seg_continuous(vars="band",weights="w",representation="intervals",
       summary=list(probs=c(.2,.5))),
-    counts=spseg_continuous(vars=columns,representation="intervals",
+    counts=seg_continuous(vars=columns,representation="intervals",
       summary=list(probs=c(.2,.5))))
   for(mode in c("radius","knn")) for(summary in c("quantiles","shares")) {
     specs <- lapply(variables,function(s) {
       s$summary$type <- summary
       s
     })
-    r <- spseg(d,coords=c("x","y"),variables=specs,neighbors=mode,
+    r <- seg_measure(d,coords=c("x","y"),variables=specs,neighbors=mode,
       bands=if(mode=="radius") c(0,2,10) else c(1,5,10),
       weighting="unweighted",output="full")
     for(part in c("indices","env","normalizers","status","knn"))
@@ -156,10 +156,10 @@ test_that("interval membership and counts give the same continuous calculation",
     }
   }
   d$band <- as.character(d$band)
-  expect_error(spseg(d,coords=c("x","y"),variables=list(v=variables$members),bands=1),
+  expect_error(seg_measure(d,coords=c("x","y"),variables=list(v=variables$members),bands=1),
                "ordered")
-  explicit <- spseg(d,coords=c("x","y"),variables=list(
-    v=spseg_continuous(vars="band",weights="w",representation="intervals",levels=columns,
+  explicit <- seg_measure(d,coords=c("x","y"),variables=list(
+    v=seg_continuous(vars="band",weights="w",representation="intervals",levels=columns,
       summary=list(probs=c(.2,.5)))),
     bands=1)
   expect_identical(explicit$analyses$v$definition$representation,"intervals")
@@ -167,10 +167,10 @@ test_that("interval membership and counts give the same continuous calculation",
 
 test_that("exact defaults and explicit representation agree", {
   d <- data.frame(x=1:4,y=0,v=c(0,0,2,5))
-  r <- spseg(d,coords=c("x","y"),variables=list(
-    default=spseg_continuous(vars="v"),
-    exact=spseg_continuous(vars="v",representation="exact"),
-    ordinal=spseg_ordinal(vars="v",levels=c(0,2,5))),bands=c(0,2),output="full")
+  r <- seg_measure(d,coords=c("x","y"),variables=list(
+    default=seg_continuous(vars="v"),
+    exact=seg_continuous(vars="v",representation="exact"),
+    ordinal=seg_ordinal(vars="v",levels=c(0,2,5))),bands=c(0,2),output="full")
   expect_equal(r$analyses$default,r$analyses$exact)
   table <- as.data.frame(r)
   expect_false(any(c("representation", "type", "method") %in% names(table)))
@@ -179,16 +179,16 @@ test_that("exact defaults and explicit representation agree", {
 })
 
 test_that("continuous representation options reject incompatible interpretations", {
-  expect_error(spseg_continuous(vars="v",representation="bins"),"exact.*intervals")
-  expect_error(spseg_continuous(vars="a",representation="intervals",scores=1),"scores")
-  expect_error(spseg_continuous(vars="a",representation="intervals",
+  expect_error(seg_continuous(vars="v",representation="bins"),"exact.*intervals")
+  expect_error(seg_continuous(vars="a",representation="intervals",scores=1),"scores")
+  expect_error(seg_continuous(vars="a",representation="intervals",
                                exposure=list(probs=c(0,1))),"unused argument")
-  expect_error(spseg_continuous(vars="a",representation="intervals",
+  expect_error(seg_continuous(vars="a",representation="intervals",
                                interpolation="polynomial"),"linear")
-  expect_error(spseg_continuous(vars="v",representation="exact",levels=c("a","b")),"levels")
-  expect_error(spseg_continuous(vars="v",representation="exact",interpolation="linear"),"interpolation")
+  expect_error(seg_continuous(vars="v",representation="exact",levels=c("a","b")),"levels")
+  expect_error(seg_continuous(vars="v",representation="exact",interpolation="linear"),"interpolation")
   d <- data.frame(x=1:2,y=0,v=ordered(c("a","b")))
-  expect_error(spseg(d,coords=c("x","y"),variables=list(v=spseg_continuous(vars="v",representation="exact")),
+  expect_error(seg_measure(d,coords=c("x","y"),variables=list(v=seg_continuous(vars="v",representation="exact")),
                      bands=1),"finite numeric")
 })
 
@@ -199,21 +199,21 @@ test_that("all count variable types share grid surfaces and neighborhood discove
     low=c(2,3,4,5),middle=c(3,1,2,1),high=c(1,2,2,2),
     inc0=c(0,2,3,1),inc1=c(3,2,2,4),
     age1=c(1,2,1,3),age2=c(2,1,2,1),age3=c(2,3,4,2),geometry=geom)
-  vars <- list(race=spseg_categorical(vars=c("a","b")),
-                education=spseg_ordinal(vars=c("low","middle","high")),
-                income=spseg_continuous(representation = "intervals", vars=c("inc0","inc1"),
+  vars <- list(race=seg_categorical(vars=c("a","b")),
+                education=seg_ordinal(vars=c("low","middle","high")),
+                income=seg_continuous(representation = "intervals", vars=c("inc0","inc1"),
                   summary=list(probs=6/17)),
-                age=spseg_continuous(vars=c("age1","age2","age3"),scores=c(20,20,40)))
+                age=seg_continuous(vars=c("age1","age2","age3"),scores=c(20,20,40)))
   totals <- vapply(vars, function(z) sum(as.matrix(sf::st_drop_geometry(areas)[z$counts])),numeric(1))
   for (surface in c("grid","pycno")) for (neighbors in c("radius","knn")) {
     band <- if(neighbors=="radius") .9 else 3
-    result <- spseg(areas,vars,population="residents",bands=band,surface=surface,
+    result <- seg_measure(areas,vars,population="residents",bands=band,surface=surface,
                      neighbors=neighbors,nrow=4,ncol=4,converge=1,
                      surface_audit=TRUE,output="full",scope="overall")
     expect_equal(result$diagnostics$focal_searches,nrow(result$coords))
     expect_named(result$surface_info$variables,names(vars))
     for (name in names(vars)) {
-      alone <- spseg(areas,vars[name],population="residents",bands=band,surface=surface,
+      alone <- seg_measure(areas,vars[name],population="residents",bands=band,surface=surface,
                        neighbors=neighbors,nrow=4,ncol=4,converge=1,
                        output="full",scope="overall")
       expect_equal(result$analyses[[name]],alone$analyses[[name]],tolerance=1e-10)

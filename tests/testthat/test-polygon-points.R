@@ -11,12 +11,12 @@ polygon_point_fixture <- function() {
 
 test_that("polygon representatives default to interior points with a centroid option", {
   x <- polygon_point_fixture()
-  variables <- list(group = spseg_categorical(vars = c("A", "B")))
-  run <- function(points) spseg(x, variables, polygon_points = points,
+  variables <- list(group = seg_categorical(vars = c("A", "B")))
+  run <- function(points) seg_measure(x, variables, polygon_points = points,
     bands = 4.5, weighting = "unweighted", output = "full")
   interior <- run("point_on_surface")
   centroid <- run("centroid")
-  default <- spseg(x, variables, bands = 4.5, weighting = "unweighted", output = "full")
+  default <- seg_measure(x, variables, bands = 4.5, weighting = "unweighted", output = "full")
   expect_equal(default$coords, interior$coords)
   expect_equal(default$analyses, interior$analyses)
   expect_identical(default$polygon_points, "point_on_surface")
@@ -40,26 +40,26 @@ test_that("automatic distance bands use the selected polygon representatives", {
   interior_distance <- as.numeric(dist(sf::st_coordinates(interior)))
   centroid_distance <- as.numeric(dist(sf::st_coordinates(centroid)))
   expect_gt(interior_distance, centroid_distance)
-  expect_equal(spseg_default_bands(x, probs = .5), interior_distance)
-  expect_equal(spseg_default_bands(x, probs = .5, polygon_points = "centroid"),
+  expect_equal(seg_default_bands(x, probs = .5), interior_distance)
+  expect_equal(seg_default_bands(x, probs = .5, polygon_points = "centroid"),
                centroid_distance)
-  variables <- list(group = spseg_categorical(vars = c("A", "B")))
-  expect_equal(spseg(x, variables)$bands, rep(interior_distance, 9))
-  expect_equal(spseg(x, variables, polygon_points = "centroid")$bands,
+  variables <- list(group = seg_categorical(vars = c("A", "B")))
+  expect_equal(seg_measure(x, variables)$bands, rep(interior_distance, 9))
+  expect_equal(seg_measure(x, variables, polygon_points = "centroid")$bands,
                rep(centroid_distance, 9))
 })
 
 test_that("point data and gridded surfaces do not change with polygon point selection", {
   x <- polygon_point_fixture()
-  variables <- list(group = spseg_categorical(vars = c("A", "B")))
+  variables <- list(group = seg_categorical(vars = c("A", "B")))
   points <- suppressWarnings(sf::st_point_on_surface(x))
-  first <- spseg(points, variables, bands = 1, output = "full")
-  second <- spseg(points, variables, bands = 1, output = "full",
+  first <- seg_measure(points, variables, bands = 1, output = "full")
+  second <- seg_measure(points, variables, bands = 1, output = "full",
                    polygon_points = "centroid")
   expect_equal(first$coords, second$coords)
   expect_equal(first$analyses, second$analyses)
   for (surface in c("grid", "pycno")) {
-    run <- function(method) spseg(x, variables, bands = 1, surface = surface,
+    run <- function(method) seg_measure(x, variables, bands = 1, surface = surface,
       polygon_points = method, nrow = 8, ncol = 12, output = "full")
     first <- run("point_on_surface")
     second <- run("centroid")
@@ -67,6 +67,6 @@ test_that("point data and gridded surfaces do not change with polygon point sele
     expect_equal(first$data, second$data)
     expect_equal(first$analyses, second$analyses)
   }
-  expect_error(spseg(x, variables, polygon_points = "unknown"), "arg")
-  expect_error(spseg_default_bands(x, polygon_points = "unknown"), "arg")
+  expect_error(seg_measure(x, variables, polygon_points = "unknown"), "arg")
+  expect_error(seg_default_bands(x, polygon_points = "unknown"), "arg")
 })

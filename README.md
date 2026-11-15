@@ -1,8 +1,6 @@
-# spseg
+# segcetera
 
-<img src="man/figures/logo.png" align="right" width="240" alt="spseg hex logo: yellow dot-pattern lettering on a viridis population surface" />
-
-**spseg** is an R package for measuring segregation in individual records,
+**segcetera** is an R package for measuring segregation in individual records,
 small-area population counts, and networks. It implements categorical, ordinal,
 and continuous segregation measures based on the work of Reardon and colleagues,
 with a common interface for geographic and network neighborhoods.
@@ -11,7 +9,7 @@ Use it to study how segregation changes with neighborhood scale, describe the
 population surrounding each location, and calculate groups' exposure to one
 another. Examples include segregation by ethnicity, education, and income.
 
-spseg provides:
+segcetera provides:
 
 - Dissimilarity, information theory, relative diversity, and square-root indices,
   plus exposure and isolation summaries.
@@ -23,8 +21,6 @@ spseg provides:
 - Polygon population surfaces and neighborhoods defined by network hops or
   travel costs.
 
-<br clear="right" />
-
 ## Installation
 
 Install the development version from GitHub:
@@ -34,7 +30,7 @@ install.packages("pak")
 pak::pak("bfjarvis/spseg")
 ```
 
-spseg requires R 4.2 or later. The GitHub installation compiles C++ code and
+segcetera requires R 4.2 or later. The GitHub installation compiles C++ code and
 installs dependencies, including `sf` and `terra`. When updating an installation,
 restart R before loading the updated package.
 
@@ -42,7 +38,7 @@ The package is in pre-1.0 development. Once a CRAN release is available, its
 installation command will be:
 
 ```r
-install.packages("spseg")
+install.packages("segcetera")
 ```
 
 The examples below use tidyverse for data preparation and extraction:
@@ -59,7 +55,7 @@ planar units. For real geographic data, use a suitable projected coordinate syst
 so distances have a meaningful unit, such as meters.
 
 ```r
-library(spseg)
+library(segcetera)
 library(tidyverse)
 
 people <- tibble(
@@ -74,12 +70,12 @@ people <- tibble(
 )
 
 variables <- list(
-  group = spseg_categorical(vars = "group"),
-  education = spseg_ordinal(vars = "education"),
-  income = spseg_continuous(vars = "income")
+  group = seg_categorical(vars = "group"),
+  education = seg_ordinal(vars = "education"),
+  income = seg_continuous(vars = "income")
 )
 
-result <- spseg(
+result <- seg_measure(
   people,
   coords = c("x", "y"),
   variables = variables,
@@ -103,7 +99,7 @@ and mapping.
 For an `sf` object, pass it directly as the first argument; its active geometry
 supplies the locations. Points use their coordinates. Raw polygons use interior
 representative points from `sf::st_point_on_surface()` by default. Set `polygon_points = "centroid"`
-to use polygon centroids. The same option is available in `spseg_default_bands()`.
+to use polygon centroids. The same option is available in `seg_default_bands()`.
 
 ### Explore the results
 
@@ -161,7 +157,7 @@ Use `neighbors = "radius"` for physical distance bands. For adaptive neighborhoo
 use `neighbors = "knn"` and give population thresholds:
 
 ```r
-nearest <- spseg(
+nearest <- seg_measure(
   people,
   coords = c("x", "y"),
   variables = variables,
@@ -177,7 +173,7 @@ uses its own eligible population.
 
 ## Income and other continuous variables
 
-`spseg_continuous()` infers the input representation: numeric microdata use exact
+`seg_continuous()` infers the input representation: numeric microdata use exact
 values; ordered-factor microdata and multiple count columns use income intervals.
 Supply `scores` with count columns when they represent exact observed values.
 Explicit `levels` provide an order for interval memberships. The selected
@@ -192,13 +188,13 @@ microdata default to four global quartile groups. To request quantile groups
 for either input, supply interior probabilities:
 
 ```r
-spseg_continuous(vars = "income", summary = list(probs = c(.2, .4, .6, .8)))
+seg_continuous(vars = "income", summary = list(probs = c(.2, .4, .6, .8)))
 ```
 
 To describe the income ranks found at local quantiles, select quantile summaries:
 
 ```r
-spseg_continuous(
+seg_continuous(
   vars = "income",
   summary = list(type = "quantiles", probs = c(.25, .5, .75), mean_rank = TRUE)
 )
@@ -225,12 +221,12 @@ areas <- tibble(
   income_low = c(30, 10), income_middle = c(15, 20), income_high = c(5, 20)
 )
 
-area_result <- spseg(
+area_result <- seg_measure(
   areas,
   coords = c("x", "y"),
   variables = list(
-    group = spseg_categorical(vars = c("group_A", "group_B")),
-    income = spseg_continuous(
+    group = seg_categorical(vars = c("group_A", "group_B")),
+    income = seg_continuous(
       vars = c("income_low", "income_middle", "income_high")
     )
   ),
@@ -242,16 +238,16 @@ area_result <- spseg(
 With these distinct area locations, `bands = 0` treats each area's own residents
 as its local environment, giving non-spatial segregation across areas. Positive
 distance bands combine nearby areas into spatial neighborhoods. Ordered-category
-counts use `spseg_ordinal(vars = c(...))` in the same way.
+counts use `seg_ordinal(vars = c(...))` in the same way.
 
 Long-form counts work too: select one membership column and use the count as a
-weight, for example `spseg_categorical(vars = "race", weights = "population_count")`.
+weight, for example `seg_categorical(vars = "race", weights = "population_count")`.
 Each row represents a neighborhood/category combination; rows in the same
 neighborhood must share its coordinates or geometry. A neighborhood identifier
 alone does not provide spatial locations. With multiple `vars`, the selected
 columns already contain counts, so do not also supply `weights`.
 
-For interval income, column order defines the income ordering. spseg interpolates
+For interval income, column order defines the income ordering. segcetera interpolates
 in global-rank space. Summary groups default to the supplied income categories.
 Explicit `summary$probs` proportionally allocates interval populations to the
 requested quantile groups. A warning identifies when groups split supplied
@@ -262,7 +258,7 @@ Extract the neighborhood diagnostics with `as.data.frame(result, what = "interpo
 For polygon `sf` count data, `surface = "grid"` distributes population across a
 fine grid before measuring neighborhoods. `surface = "pycno"` adds
 pycnophylactic smoothing, preserving source-zone category totals through
-rescaling. See the [surface guide](vignettes/spseg-surface-construction.Rmd) for
+rescaling. See the [surface guide](vignettes/segcetera-surface-construction.Rmd) for
 resolution choices and count-conservation audits.
 
 ## Network neighborhoods
@@ -278,10 +274,10 @@ edges <- tibble(
   minutes = c(2, 3, 1)
 )
 
-network <- spseg_network(edges, cost = "minutes", units = "minutes")
+network <- seg_network(edges, cost = "minutes", units = "minutes")
 nodes <- people |> mutate(node = as.character(x))
 
-network_result <- spseg(
+network_result <- seg_measure(
   nodes,
   variables = variables,
   network = network,
@@ -293,22 +289,22 @@ network_result <- spseg(
 
 The bands here are minutes of shortest-path travel. Omit `cost` for hop-count
 distance, or use `directed = TRUE` for outward travel along directed edges.
-The [network guide](vignettes/spseg-networks.Rmd) includes adjacency and road-network
+The [network guide](vignettes/segcetera-networks.Rmd) includes adjacency and road-network
 preparation with `sfnetworks`.
 
 ## Learn more
 
-- [Getting started](vignettes/spseg-getting-started.Rmd): a complete workflow from
+- [Getting started](vignettes/segcetera-getting-started.Rmd): a complete workflow from
   simulated people to polygon counts and parallel comparisons across patterns.
-- [Multiple variables and methods](vignettes/spseg-multiple-variables.Rmd): input
+- [Multiple variables and methods](vignettes/segcetera-multiple-variables.Rmd): input
   choices, multi-variable workflows, and interpretation.
-- [Technical definitions](vignettes/spseg-measure-definitions.Rmd): variation
+- [Technical definitions](vignettes/segcetera-measure-definitions.Rmd): variation
   functions, normalizers, local contributions, and methodological sources.
-- Installed help: `?spseg`, `?spseg_variables`, and `?spseg_result`.
+- Installed help: `?seg_measure`, `?seg_variables`, and `?seg_result`.
 - [GitHub Issues](https://github.com/bfjarvis/spseg/issues): bug reports, feature
   requests, and questions about methods or workflows.
 
-spseg builds on methods developed by Reardon and colleagues and originated as a
+segcetera builds on methods developed by Reardon and colleagues and originated as a
 fork of [seg](https://github.com/syunhong/seg) by Seong-Yun Hong and David
 O'Sullivan. Attribution for reused code, example data, and other materials is
 retained in the package.

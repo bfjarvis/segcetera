@@ -3,10 +3,10 @@ test_that("ordinal pairs and exposure reuse categorical category shares", {
     middle = c(1, 0, 2, 0, 0), high = c(0, 0, 1, 5, 0), absent = 0)
   vars <- c("low", "middle", "high", "absent")
   for (neighbors in c("radius", "knn")) {
-    result <- spseg(d, coords = c("x", "y"), variables = list(
-      nominal = spseg_categorical(vars = vars),
-      ordered = spseg_ordinal(vars = vars),
-      quantiles = spseg_ordinal(vars = vars, localenv = "quantiles")),
+    result <- seg_measure(d, coords = c("x", "y"), variables = list(
+      nominal = seg_categorical(vars = vars),
+      ordered = seg_ordinal(vars = vars),
+      quantiles = seg_ordinal(vars = vars, localenv = "quantiles")),
       neighbors = neighbors,
       bands = if (neighbors == "radius") c(0, 2.5) else c(5, 10),
       output = "full", keep_scores = TRUE, keep_contributions = TRUE)
@@ -32,8 +32,8 @@ test_that("ordinal pairs and exposure reuse categorical category shares", {
 
 test_that("two ordinal categories yield the corresponding two-group indices", {
   d <- data.frame(x = 1:3, y = 0, low = c(4, 2, 1), high = c(1, 2, 4))
-  run <- function(scope) spseg(d, coords = c("x", "y"), variables = list(
-    education = spseg_ordinal(vars = c("low", "high"))),
+  run <- function(scope) seg_measure(d, coords = c("x", "y"), variables = list(
+    education = seg_ordinal(vars = c("low", "high"))),
     bands = c(0, 2.5), scope = scope)
   both <- run("both")$analyses$education
   for (key in c("h", "r", "s", "d")) {
@@ -53,9 +53,9 @@ test_that("weighted ordinal memberships retain category-pair labels", {
   d <- data.frame(x = c(0, 0, 1, 2), y = 0, n = c(3, 1, 2, 4),
     level = ordered(c("low", "high", "middle", "high"),
       levels = c("low", "middle", "high")))
-  result <- spseg(d, coords = c("x", "y"), variables = list(
-    ordinal = spseg_ordinal(vars = "level", weights = "n"),
-    category = spseg_categorical(vars = "level", weights = "n")),
+  result <- seg_measure(d, coords = c("x", "y"), variables = list(
+    ordinal = seg_ordinal(vars = "level", weights = "n"),
+    category = seg_categorical(vars = "level", weights = "n")),
     bands = c(0, 2), keep_contributions = TRUE)
   a <- result$analyses$ordinal
   expect_equal(a$indices$pairwise, result$analyses$category$indices$pairwise)

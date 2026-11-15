@@ -1,10 +1,10 @@
 test_that("grouped local probabilities respect exact bounds across kernels", {
   n <- 128L
   d <- data.frame(x = seq(0, 1, length.out = n), y = 0, value = seq_len(n))
-  specs <- list(income = spseg_continuous(vars = "value"))
+  specs <- list(income = seg_continuous(vars = "value"))
   for (neighbors in c("radius", "knn")) {
     for (weighting in c("biweight", "unweighted", "inverse", "exponential")) {
-      result <- spseg(d, specs, coords = c("x", "y"), neighbors = neighbors,
+      result <- seg_measure(d, specs, coords = c("x", "y"), neighbors = neighbors,
         bands = if (neighbors == "radius") c(.03, .08, .15) else c(5, 13, 25),
         weighting = weighting, output = "full")
       a <- result$analyses$income
@@ -27,10 +27,10 @@ test_that("grouped local probabilities respect exact bounds across kernels", {
 test_that("bounded summaries preserve interior precision and undefined values", {
   d <- data.frame(x = c(0, 10, 20), y = 0,
     low = c(1, 0, 0), high = c(2, 1, 0), absent = 0)
-  result <- spseg(d, list(
-    category = spseg_categorical(vars = c("low", "high", "absent")),
-    ordinal = spseg_ordinal(vars = c("low", "high", "absent")),
-    exact = spseg_continuous(vars = c("low", "high", "absent"), scores = c(1, 2, 3),
+  result <- seg_measure(d, list(
+    category = seg_categorical(vars = c("low", "high", "absent")),
+    ordinal = seg_ordinal(vars = c("low", "high", "absent")),
+    exact = seg_continuous(vars = c("low", "high", "absent"), scores = c(1, 2, 3),
       summary = list(cuts = 1))), coords = c("x", "y"), bands = 0,
     output = "full")
   for (a in result$analyses) {
@@ -47,10 +47,10 @@ test_that("rank and interpolated probability outputs retain their bounds", {
   d <- data.frame(x = seq(0, 1, length.out = n), y = 0,
     value = seq_len(n), low = rep(c(1, 0), each = n / 2),
     high = rep(c(0, 1), each = n / 2))
-  result <- suppressWarnings(spseg(d, list(
-    rank = spseg_continuous(vars = "value",
+  result <- suppressWarnings(seg_measure(d, list(
+    rank = seg_continuous(vars = "value",
       summary = list(type = "quantiles", mean_rank = TRUE)),
-    intervals = spseg_continuous(vars = c("low", "high"), representation = "intervals")),
+    intervals = seg_continuous(vars = c("low", "high"), representation = "intervals")),
     coords = c("x", "y"), bands = c(.03, .15), output = "full"))
   for (a in result$analyses) {
     values <- unlist(c(a$env, a$rank_summary, a$interpolation), use.names = FALSE)
@@ -62,15 +62,15 @@ test_that("rank and interpolated probability outputs retain their bounds", {
 test_that("the engine corrects roundoff but rejects invalid computed probabilities", {
   # Inject invalid internal allocations to exercise guards unreachable with valid input.
   d <- data.frame(low = c(1, 0), high = c(0, 1))
-  spec <- spseg_continuous(vars = c("low", "high"), representation = "intervals",
+  spec <- seg_continuous(vars = c("low", "high"), representation = "intervals",
     summary = list(probs = .5))
-  config <- spseg:::.spseg_compile(spec, d, rep(1, 2), "all")
+  config <- segcetera:::.seg_compile(spec, d, rep(1, 2), "all")
   config$settings <- list(scope = "both", output = "localenv",
     keep_scores = FALSE, keep_contributions = FALSE)
   run <- function(allocation) {
     input <- config
     input$group_fractions <- allocation
-    spseg:::spseg_engine_cpp(cbind(c(0, 1), 0), list(v = input), 0, 3, 1L,
+    segcetera:::.seg_engine_cpp(cbind(c(0, 1), 0), list(v = input), 0, 3, 1L,
       TRUE, 0L, 1L, list())$analyses$v$env[[1]]
   }
   tiny <- diag(2) * (1 + .Machine$double.eps)

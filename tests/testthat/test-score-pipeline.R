@@ -3,11 +3,11 @@ score_example <- function(neighbors = "radius", ...) {
     b = c(1, 3, 2, 0, 0), c = c(0, 2, 1, 4, 0),
     income = c(1, 2, 4, 8, 16))
   vars <- c("a", "b", "c")
-  spseg(d, coords = c("x", "y"), variables = list(
-    category = spseg_categorical(vars = vars),
-    ordinal = spseg_ordinal(vars = vars),
-    exact = spseg_continuous(vars = "income", weights = rowSums(d[vars])),
-    intervals = spseg_continuous(vars = vars, representation = "intervals",
+  seg_measure(d, coords = c("x", "y"), variables = list(
+    category = seg_categorical(vars = vars),
+    ordinal = seg_ordinal(vars = vars),
+    exact = seg_continuous(vars = "income", weights = rowSums(d[vars])),
+    intervals = seg_continuous(vars = vars, representation = "intervals",
       summary = list(probs = c(.35, .65)))),
     population = rowSums(d[vars]), neighbors = neighbors,
     bands = if (neighbors == "radius") c(0, 2.5) else c(5, 12), ...)
@@ -85,7 +85,7 @@ test_that("contributions can be retained without indices or environments", {
 test_that("absent groups and zero-population focal units have defined handling", {
   d <- data.frame(x = 1:4, y = 0, a = c(4, 0, 0, 0),
     b = c(0, 3, 0, 0), c = c(0, 0, 2, 0), absent = 0)
-  result <- spseg(d, list(g = spseg_categorical(vars = names(d)[3:6])),
+  result <- seg_measure(d, list(g = seg_categorical(vars = names(d)[3:6])),
     coords = c("x", "y"), bands = 0, keep_scores = TRUE,
     keep_contributions = TRUE, output = "full")
   a <- result$analyses$g
@@ -96,7 +96,7 @@ test_that("absent groups and zero-population focal units have defined handling",
     expect_equal(values[3, 1], 0)
     expect_true(is.na(a$scores$pairwise[[key]][[1]][3, 1]))
   }
-  pair_only <- spseg(d, list(g = spseg_categorical(vars = c("a", "b"))),
+  pair_only <- seg_measure(d, list(g = seg_categorical(vars = c("a", "b"))),
     coords = c("x", "y"), bands = 0, scope = "pairwise", keep_scores = TRUE)
   expect_length(pair_only$analyses$g$scores$overall, 0)
   expect_named(pair_only$analyses$g$indices$overall, "p")
@@ -105,14 +105,14 @@ test_that("absent groups and zero-population focal units have defined handling",
 test_that("retained local results preserve geographic and network row keys", {
   x <- sf::st_as_sf(data.frame(x = 1:3, y = 0,
     a = c(2, 1, 0), b = c(0, 1, 2)), coords = c("x", "y"), crs = 3857)
-  result <- spseg(x, list(g = spseg_categorical(vars = c("a", "b"))),
+  result <- seg_measure(x, list(g = seg_categorical(vars = c("a", "b"))),
     bands = c(0, 2), output = "full", keep_contributions = TRUE)
   rows <- as.data.frame(result, what = "contributions", bands = 2)
   spatial <- sf::st_as_sf(result, what = "contributions", bands = 2)
   expect_equal(sf::st_geometry(spatial), sf::st_geometry(x)[rows$location])
-  net <- spseg_network(data.frame(from = c("a", "b"), to = c("b", "c")))
+  net <- seg_network(data.frame(from = c("a", "b"), to = c("b", "c")))
   d <- data.frame(node = c("c", "a", "b"), a = c(0, 2, 1), b = c(2, 0, 1))
-  result <- spseg(d, list(g = spseg_categorical(vars = c("a", "b"))),
+  result <- seg_measure(d, list(g = seg_categorical(vars = c("a", "b"))),
     network = net, node_id = "node", bands = 1, keep_scores = TRUE)
   rows <- as.data.frame(result, what = "scores")
   expect_equal(rows$node, d$node[rows$location])
@@ -120,8 +120,8 @@ test_that("retained local results preserve geographic and network row keys", {
 
 test_that("constant variables and exposure-only requests keep compact arrays", {
   d <- data.frame(x = 1:3, y = 0, a = c(1, 2, 3), b = 0)
-  run <- function(...) spseg(d,
-    list(g = spseg_categorical(vars = c("a", "b"))), coords = c("x", "y"),
+  run <- function(...) seg_measure(d,
+    list(g = seg_categorical(vars = c("a", "b"))), coords = c("x", "y"),
     bands = 0, keep_scores = TRUE, keep_contributions = TRUE, ...)
   constant <- run()
   for (values in constant$analyses$g$contributions$overall)

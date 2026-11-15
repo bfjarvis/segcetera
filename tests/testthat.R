@@ -1,4 +1,4 @@
 library(testthat)
-library(spseg)
+library(segcetera)
 
-test_check("spseg")
+test_check("segcetera")

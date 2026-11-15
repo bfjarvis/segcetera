@@ -4,7 +4,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2L) stop("Supply a package library and an output RDS path")
 .libPaths(c(normalizePath(args[1]), .libPaths()))
-library(spseg)
+library(segcetera)
 reps <- if (length(args) > 2L) as.integer(args[3]) else 20L
 stopifnot(length(reps) == 1L, !is.na(reps), reps > 0)
 
@@ -16,12 +16,12 @@ counts <- matrix(sample(0:20, n * 6, replace = TRUE), n, 6,
 d <- data.frame(x = runif(n, 0, 1000), y = runif(n, 0, 1000), counts,
   income = exp(rnorm(n)), node = seq_len(n))
 population <- rowSums(counts)
-category <- list(group = spseg_categorical(vars = columns))
+category <- list(group = seg_categorical(vars = columns))
 mixed <- list(
-  group = spseg_categorical(vars = columns),
-  education = spseg_ordinal(vars = columns),
-  income = spseg_continuous(vars = "income"),
-  intervals = spseg_continuous(vars = columns, representation = "intervals",
+  group = seg_categorical(vars = columns),
+  education = seg_ordinal(vars = columns),
+  income = seg_continuous(vars = "income"),
+  intervals = seg_continuous(vars = columns, representation = "intervals",
     summary = list(probs = head(cumsum(colSums(counts) / sum(counts)), -1)))
 )
 make_case <- function(data = d, variables = category, bands = c(30, 75, 150),
@@ -37,37 +37,37 @@ cases <- list(
   mixed_full = make_case(variables = mixed, output = "full"),
   dense_radius = make_case(data = d[1:1000, ], bands = c(300, 750, 1500)),
   network = make_case(data = d[1:1000, ], bands = c(1, 5, 15), node_id = "node",
-    network = spseg_network(data.frame(from = 1:999, to = 2:1000)))
+    network = seg_network(data.frame(from = 1:999, to = 2:1000)))
 )
 
-data(spseg_data, package = "spseg")
+data(seg_data, package = "segcetera")
 xy <- as.matrix(expand.grid(x = seq(.5, 9.5), y = seq(.5, 9.5)))
-cases$toy <- list(x = xy, data = spseg_data,
-  variables = list(group = spseg_categorical(vars = names(spseg_data)[5:6])),
+cases$toy <- list(x = xy, data = seg_data,
+  variables = list(group = seg_categorical(vars = names(seg_data)[5:6])),
   bands = c(0, 1, 2, 4), output = "full")
-auck <- sf::st_read(system.file("extdata", "auck", "auck.shp", package = "spseg"),
+auck <- sf::st_read(system.file("extdata", "auck", "auck.shp", package = "segcetera"),
   quiet = TRUE)
 auck$Korean <- auck$KR06
 auck$Non_Korean <- auck$POP06 - auck$KR06
 cases$auckland <- list(x = auck,
-  variables = list(group = spseg_categorical(vars = c("Korean", "Non_Korean"))),
+  variables = list(group = seg_categorical(vars = c("Korean", "Non_Korean"))),
   bands = seq(500, 10000, 500), output = "full")
 
 results <- timings <- list()
 for (name in names(cases)) {
   call <- cases[[name]]
-  result <- do.call(spseg, call)
+  result <- do.call(seg_measure, call)
   # Geometry and input tables are unchanged; retain numerical engine outputs.
   results[[name]] <- lapply(result$analyses, function(a)
     a[c("indices", "env", "normalizers", "rank_summary", "interpolation", "status", "knn")])
   batches <- switch(name, toy = 100L, categorical_zero = 20L,
                     network = 5L, 1L)
-  invisible(do.call(spseg, call))
+  invisible(do.call(seg_measure, call))
   elapsed <- numeric(reps)
   for (r in seq_len(reps)) {
     gc()
     elapsed[r] <- system.time(for (j in seq_len(batches))
-      invisible(do.call(spseg, call)))[["elapsed"]] / batches
+      invisible(do.call(seg_measure, call)))[["elapsed"]] / batches
   }
   timings[[name]] <- elapsed
   cat(name, sprintf("median %.6f seconds\n", median(elapsed)))

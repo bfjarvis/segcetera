@@ -7,9 +7,9 @@ summary_reference_data <- function() {
 }
 
 run_reference_summary <- function(summary) {
-  spseg(
+  seg_measure(
     summary_reference_data(),
-    list(income = spseg_continuous(
+    list(income = seg_continuous(
       vars = c("value_10", "value_20", "value_30", "value_40"),
       scores = c(10, 20, 30, 40), summary = summary
     )),
@@ -52,20 +52,20 @@ test_that("exact value cuts agree with hand-counted ties", {
   result <- run_reference_summary(list(type = "shares", cuts = 20))
   expect_equal(result$analyses$income$env[[1]],
     rbind(c(0.75, 0.25), c(0.25, 0.75)), ignore_attr = TRUE)
-  expect_error(spseg_continuous(vars = "v",
+  expect_error(seg_continuous(vars = "v",
     summary = list(type = "quantiles", cuts = 20)), "requires shares")
 })
 
 test_that("interval populations split proportionally across requested rank bins", {
   d <- data.frame(x = c(0, 10), y = 0,
     a = c(4, 0), b = c(0, 2), c = c(0, 4), d = c(0, 0))
-  specs <- list(income = spseg_continuous(
+  specs <- list(income = seg_continuous(
     representation = "intervals", vars = c("a", "b", "c", "d"),
     summary = list(type = "shares", probs = c(0.25, 0.5, 0.75))
   ))
   warning_messages <- character()
   result <- withCallingHandlers(
-    spseg(d, specs, coords = c("x", "y"), bands = c(0, 2),
+    seg_measure(d, specs, coords = c("x", "y"), bands = c(0, 2),
       weighting = "unweighted", output = "full"),
     warning = function(w) {
       warning_messages <<- c(warning_messages, conditionMessage(w))
@@ -120,7 +120,7 @@ test_that("interval populations split proportionally across requested rank bins"
 
 test_that("fractional interval allocation handles few and one populated bins", {
   run_shares <- function(d) {
-    spseg(d, list(income = spseg_continuous(
+    seg_measure(d, list(income = seg_continuous(
       representation = "intervals", vars = c("a", "b", "c", "d"),
       summary = list(type = "shares", probs = c(0.25, 0.5, 0.75))
     )), coords = c("x", "y"), bands = 0, weighting = "unweighted",
@@ -169,14 +169,14 @@ test_that("interval summary grids leave full continuous scalar indices unchanged
   d <- data.frame(x = 0:2, y = 0,
     low = c(4, 0, 2), middle = c(0, 5, 0), high = c(0, 3, 4))
   variables <- list(
-    quartiles = spseg_continuous(representation = "intervals",
+    quartiles = seg_continuous(representation = "intervals",
       vars = c("low", "middle", "high"),
       summary = list(type = "shares", probs = c(0.25, 0.5, 0.75))),
-    custom = spseg_continuous(representation = "intervals",
+    custom = seg_continuous(representation = "intervals",
       vars = c("low", "middle", "high"),
       summary = list(type = "shares", probs = c(0.2, 0.8)))
   )
-  result <- suppressWarnings(spseg(d, variables, coords = c("x", "y"),
+  result <- suppressWarnings(seg_measure(d, variables, coords = c("x", "y"),
     bands = c(0, 2), weighting = "unweighted", output = "full"))
   scalar_names <- c("d", "h", "r", "s")
   expect_equal(result$analyses$quartiles$indices$overall[scalar_names],
@@ -188,13 +188,13 @@ test_that("interval summary grids leave full continuous scalar indices unchanged
 test_that("summary grids do not change continuous scalar indices or search counts", {
   d <- data.frame(x = 0:5, y = 0, income = c(1, 1, 2, 3, 5, 8))
   specs <- list(
-    default = spseg_continuous(vars = "income"),
-    median = spseg_continuous(vars = "income",
+    default = seg_continuous(vars = "income"),
+    median = seg_continuous(vars = "income",
       summary = list(type = "quantiles", probs = 0.5)),
-    custom = spseg_continuous(vars = "income",
+    custom = seg_continuous(vars = "income",
       summary = list(type = "shares", probs = c(0.2, 0.8)))
   )
-  result <- spseg(d, specs, coords = c("x", "y"), bands = c(0, 2),
+  result <- seg_measure(d, specs, coords = c("x", "y"), bands = c(0, 2),
     weighting = "unweighted", output = "full")
   scalar_names <- c("d", "h", "r", "s")
   reference <- result$analyses$default
@@ -206,11 +206,11 @@ test_that("summary grids do not change continuous scalar indices or search count
   }
   expect_equal(result$diagnostics$focal_searches, nrow(d))
 
-  exposure_only <- spseg(d, list(income = specs$median), coords = c("x", "y"),
+  exposure_only <- seg_measure(d, list(income = specs$median), coords = c("x", "y"),
     bands = c(0, 2), weighting = "unweighted", measures = "exposure",
     output = "full")
   expect_equal(as.data.frame(exposure_only, what = "exposure"),
-    as.data.frame(spseg(d, list(income = specs$median), coords = c("x", "y"),
+    as.data.frame(seg_measure(d, list(income = specs$median), coords = c("x", "y"),
       bands = c(0, 2), weighting = "unweighted", output = "full"),
       what = "exposure"))
 })
@@ -221,10 +221,10 @@ test_that("individual and count inputs give the same local and grouped summaries
     x = c(rep(0, 4), rep(10, 4)), y = 0,
     income = c(10, 10, 20, 40, 20, 30, 30, 40)
   )
-  individual <- spseg(people, list(income = spseg_continuous(vars = "income",
+  individual <- seg_measure(people, list(income = seg_continuous(vars = "income",
     summary = list(type = "quantiles", probs = 0.5, mean_rank = TRUE))),
     coords = c("x", "y"), bands = 0, weighting = "unweighted", output = "full")
-  aggregate <- spseg(counts, list(income = spseg_continuous(
+  aggregate <- seg_measure(counts, list(income = seg_continuous(
     vars = c("value_10", "value_20", "value_30", "value_40"),
     scores = c(10, 20, 30, 40),
     summary = list(type = "quantiles", probs = 0.5, mean_rank = TRUE)
@@ -242,14 +242,14 @@ test_that("radius and kNN summaries agree with the brute search reference", {
     income = c(0, 0, 20, 100), weight = c(1, 3, 2, 4))
   for (neighborhood in c("radius", "knn")) {
     bands <- if (neighborhood == "radius") c(1, 4) else c(2, 4)
-    args <- list(x = d, variables = list(income = spseg_continuous(
+    args <- list(x = d, variables = list(income = seg_continuous(
       vars = "income", weights = "weight",
       summary = list(type = "quantiles", probs = c(0.25, 0.5, 0.75),
         mean_rank = TRUE))), coords = c("x", "y"), bands = bands,
       neighbors = neighborhood, weighting = "unweighted", output = "full")
-    fast <- do.call(spseg, args)
+    fast <- do.call(seg_measure, args)
     args$search <- "brute"
-    reference <- do.call(spseg, args)
+    reference <- do.call(seg_measure, args)
     expect_equal(fast$analyses, reference$analyses, tolerance = 1e-12)
     expect_equal(fast$diagnostics$focal_searches, nrow(d))
   }
