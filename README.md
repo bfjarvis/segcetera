@@ -23,11 +23,11 @@ segcetera provides:
 
 ## Installation
 
-Install the development version from GitHub:
+Install the development version from the `develop` branch on GitHub:
 
 ```r
 install.packages("pak")
-pak::pak("bfjarvis/spseg")
+pak::pak("bfjarvis/segcetera@develop")
 ```
 
 segcetera requires R 4.2 or later. The GitHub installation compiles C++ code and
@@ -301,7 +301,7 @@ preparation with `sfnetworks`.
 - [Technical definitions](vignettes/segcetera-measure-definitions.Rmd): variation
   functions, normalizers, local contributions, and methodological sources.
 - Installed help: `?seg_measure`, `?seg_variables`, and `?seg_result`.
-- [GitHub Issues](https://github.com/bfjarvis/spseg/issues): bug reports, feature
+- [GitHub Issues](https://github.com/bfjarvis/segcetera/issues): bug reports, feature
   requests, and questions about methods or workflows.
 
 segcetera builds on methods developed by Reardon and colleagues and originated as a

@@ -277,7 +277,7 @@ vignette for differences from Reardon's polynomial threshold-curve estimator.
 #| label: libraries
 #| eval: false
 install.packages("pak")
-pak::pak("bfjarvis/spseg")
+pak::pak("bfjarvis/segcetera@develop")
 
 library(segcetera)
 library(sf)
@@ -1220,7 +1220,7 @@ vignette("segcetera-networks")
 
 \bigskip
 
-\url{https://github.com/bfjarvis/spseg}
+\url{https://github.com/bfjarvis/segcetera}
 
 ::: {.notes}
 The Quarto source embeds the simulation, calculations, and plotting code. The package vignettes contain the full workflows and mathematical
