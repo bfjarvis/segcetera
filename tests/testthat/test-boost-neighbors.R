@@ -37,3 +37,51 @@ test_that("coincident observations share a fractional boundary after the focal",
   expect_equal(r$analyses$g$knn$min_population,2)
   expect_equal(r$analyses$g$knn$max_population,2)
 })
+test_that("radius band reuse preserves independent results and requested order", {
+  d <- data.frame(x = c(0, 0, 0.4, 1, 2), y = 0,
+                  a = c(2, 0, 2, 0, 1), b = c(0, 2, 0, 3, 1))
+  vars <- list(g = seg_categorical(c("a", "b")))
+  bands <- c(2, 0, 0.4, 1, 0.4)
+  for (weighting in c("unweighted", "biweight", "inverse", "exponential")) {
+    for (normalize in c(FALSE, TRUE)) {
+      run <- function(bands) seg_measure(
+        d, vars, coords = c("x", "y"), bands = bands,
+        weighting = weighting, normalize = normalize, output = "full"
+      )
+      joint <- run(bands)
+      expect_identical(joint$bands, bands)
+      expect_equal(joint$diagnostics$focal_searches, nrow(d))
+      for (b in seq_along(bands)) {
+        separate <- run(bands[b])$analyses$g
+        expect_identical(joint$analyses$g$env[[b]], separate$env[[1]])
+        expect_equal(joint$analyses$g$indices$overall$h[b],
+                     separate$indices$overall$h)
+      }
+    }
+  }
+})
+test_that("running counts and sparse exact ranks coexist across radius bands", {
+  d <- data.frame(x = c(0, 0, .25, .5, 1), y = 0, value = c(1, 2, 2, 4, 8),
+                  a = c(1, 0, 1, 3, 2), b = c(0, 1, 2, 1, 3))
+  vars <- list(
+    ordinal = seg_ordinal(c("a", "b")),
+    interval = seg_continuous(c("a", "b")),
+    exact_counts = seg_continuous(c("a", "b"), scores = c(1, 5)),
+    exact_rows = seg_continuous("value")
+  )
+  run <- function(bands) seg_measure(
+    d, vars, coords = c("x", "y"), population = d$a + d$b,
+    bands = bands, weighting = "unweighted", output = "full",
+    keep_scores = TRUE, keep_contributions = TRUE
+  )
+  bands <- c(1, 0, .25)
+  joint <- run(bands)
+  for (band in bands) {
+    separate <- run(band)
+    for (what in c("indices", "pairwise", "exposure", "env", "scores",
+                   "contributions")) {
+      expect_equal(as.data.frame(joint, what = what, bands = band),
+                   as.data.frame(separate, what = what))
+    }
+  }
+})

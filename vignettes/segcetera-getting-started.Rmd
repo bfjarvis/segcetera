@@ -48,8 +48,8 @@ city <- seg_pattern(
   side = side,
   cycles = 2,
   center = 1,
-  group = c(A = 1, B = 1, C = 1),
-  noise.agents = 0.5,
+  group = c(C = 1, B = 1, A = 1),
+  noise.agents = 1,
   noise.location = 1.5,
 ) |>
   rename(resources = resource) |>
@@ -86,7 +86,7 @@ city |>
   coord_equal() +
   theme_void()
 
-colors <- viridis::mako(4)
+colors <- viridis::mako(8)[c(1, 5, 7)]
 city |>
   ggplot(aes(x, y, colour = status)) +
   geom_point() +
@@ -95,20 +95,24 @@ city |>
   labs(title = "Status") +
   theme_void()
 
-colors <- viridis::rocket(2)
+colors <- viridis::rocket(8)[c(1, 5, 7)]
 city |>
-  ggplot(aes(x, y, colour = group)) +
+  ggplot(aes(x, y, color = group)) +
   geom_point() +
   coord_equal() +
   theme_void() +
   labs(title = "Groups") +
-  scale_color_discrete(palette = c("blue", "red"))
+  scale_color_discrete(palette = colors, name = "group")
 ```
 
 
 # Applying `segcetera` to individual-level data
 
-We can calculate spatial segregation measures by applying the `seg_measure()` function directly to the micro-data. The call below requests radius-based neighborhoods at several bandwidths. We can request the measures for multiple variables in one call using a list that nests calls to `seg_categorical()`, `seg_ordinal()`, and `seg_continuous()` helper functions. This is computationally more efficient than calling the `seg_measure()` function separately for each variable, because we can reuse the same nearest neighbor calculations across variables. The resulting indices and local environments are stored in `result`.
+We can calculate spatial segregation measures by applying the `seg_measure()` function directly to the micro-data. We start with the simple case of segregation between the "A" and "B" groups. We'll look at segregation for the other covariates later on. The key inputs to the call are a dataframe, tibble, or spatial dataframe that contains the variable(s) for which segregation will be measured. If it is an `sf` dataframe, then spatial coordinates will be handled automatically, but if it is a regular dataframe, then the coordinates need to explicitly identified. 
+
+The call below also requests radius-based neighborhoods at several bandwidths. It is computationally efficient to produce measures for all bandwidth simultaneously so that 
+
+The resulting indices and local environments are stored in `result`.
 
 ```{r micro-indices}
 micro_variables <- list(
@@ -122,8 +126,8 @@ micro_variables <- list(
 bands <- c(50, seq(100, 1000, by = 100))
 result <- seg_measure(
   city,
-  coords = c("x", "y"),
   variables = "group",
+  coords = c("x", "y"),
   bands = bands,
   neighbors = "radius",
   measures = "all",

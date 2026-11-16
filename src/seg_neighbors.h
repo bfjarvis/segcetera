@@ -59,14 +59,11 @@ inline bool seg_populations_reached(const std::vector<PopulationSum>& sums,
 }
 
 inline NeighborhoodWeights seg_radius_weights(const std::vector<Neighbor>& neighbors,
-    double band, double power, int weighting, bool normalized) {
+    double band, double power, int weighting, bool normalized,
+    double nearest_positive) {
   NeighborhoodWeights out;
   const double bw = normalized && band > 0 ? band : 1.0;
-  double tolerance = bw;
-  if (weighting == Inverse) for (const auto& nb : neighbors) {
-    if (nb.d > band) break;
-    if (nb.d > 0) { tolerance = nb.d / 2; break; }
-  }
+  const double tolerance = nearest_positive <= band ? nearest_positive / 2 : bw;
   for (const auto& nb : neighbors) {
     if (nb.d > band) break;
     const double d = weighting == Inverse && nb.d == 0 ? tolerance : nb.d;

@@ -275,10 +275,29 @@ struct VariableAnalysis {
     return summary;
   }
 
+  bool seg_uses_sparse_distribution() const {
+    return type == ContinuousExact && N.n_rows == 0;
+  }
+
+  void seg_add_neighbor(std::vector<double>& counts, int id, double w) const {
+    if (N.n_rows) {
+      for (int g = 0; g < M; ++g) counts[g] += w * N(id, g);
+    } else if (code[id] >= 0) counts[code[id]] += w * T_i[id];
+  }
+
+  double seg_normalize_distribution(std::vector<double>& p,
+      std::vector<std::pair<int,double>>& sparse) const {
+    const double local = std::accumulate(p.begin(), p.end(), 0.0);
+    if (local > 0) for (double& value : p) value /= local;
+    if (type == ContinuousExact)
+      for (int g = 0; g < M; ++g) if (p[g] > 0) sparse.push_back({g, p[g]});
+    return local;
+  }
+
   double seg_build_local_distribution(const NeighborhoodWeights& c,
       std::vector<double>& p, std::vector<std::pair<int,double>>& sparse) const {
     double local=0;
-    if(type==ContinuousExact && N.n_rows==0) {
+    if (seg_uses_sparse_distribution()) {
       sparse.reserve(c.ids.size());
       for(std::size_t a=0;a<c.ids.size();++a) {
         int id=c.ids[a], g=code[id];
@@ -296,15 +315,9 @@ struct VariableAnalysis {
       if(local>0) for(auto& item:sparse) item.second/=local;
     } else {
       p.assign(M,0);
-      for(std::size_t a=0;a<c.ids.size();++a) {
-        int id=c.ids[a]; double w=c.weights[a];
-        if(N.n_rows) {
-          for(int g=0;g<M;++g) p[g]+=w*N(id,g);
-        } else if(code[id]>=0) p[code[id]]+=w*T_i[id];
-      }
-      local=std::accumulate(p.begin(),p.end(),0.0);
-      if(local>0) for(double& v:p) v/=local;
-      if(type==ContinuousExact) for(int g=0;g<M;++g) if(p[g]>0) sparse.push_back({g,p[g]});
+      for (std::size_t a = 0; a < c.ids.size(); ++a)
+        seg_add_neighbor(p, c.ids[a], c.weights[a]);
+      local = seg_normalize_distribution(p, sparse);
     }
     return local;
   }
@@ -380,6 +393,19 @@ struct VariableAnalysis {
     std::vector<double> p;
     std::vector<std::pair<int,double>> sparse;
     const double local = seg_build_local_distribution(c, p, sparse);
+    seg_process_distribution(i, band, p, sparse, local, c.ids.size());
+  }
+
+  void seg_process_counts(int i, int band, std::vector<double> p,
+                          std::size_t neighbors) {
+    std::vector<std::pair<int,double>> sparse;
+    const double local = seg_normalize_distribution(p, sparse);
+    seg_process_distribution(i, band, p, sparse, local, neighbors);
+  }
+
+  void seg_process_distribution(int i, int band, const std::vector<double>& p,
+      const std::vector<std::pair<int,double>>& sparse, double local,
+      std::size_t neighbors) {
     ++local_environment_count;
     std::vector<double> summary;
     if(keep_env && group_fractions.nrow()>0) {
@@ -394,7 +420,7 @@ struct VariableAnalysis {
     const bool need_scores = indices || keep_scores || keep_contributions;
     if(keep_env || (need_scores && continuous &&
                     (flags[Exposure] || (pairwise && env_type==Shares)))) {
-      summary=seg_summarize_environment(p,sparse,local,c.ids.size());
+      summary=seg_summarize_environment(p,sparse,local,neighbors);
       if(keep_env) {
         NumericMatrix env=environments[band];
         for(int j=0;j<env_columns;++j) env(i,j)=summary[j];
@@ -601,6 +627,24 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
       as<bool>(settings["keep_scores"]),as<bool>(settings["keep_contributions"])));
   }
   const bool knn = neighbors==PopulationNearest;
+  const bool reuse_radius_weights = !knn && B > 1 &&
+    (weighting == Unweighted || (!normalize && weighting != Inverse));
+  std::vector<int> band_order(B);
+  std::iota(band_order.begin(), band_order.end(), 0);
+  if (reuse_radius_weights)
+    std::stable_sort(band_order.begin(), band_order.end(),
+      [&](int a, int b) { return bands[a] < bands[b]; });
+  std::vector<std::size_t> dense, sparse;
+  std::vector<std::vector<double>> running_counts;
+  if (reuse_radius_weights) {
+    for (std::size_t v = 0; v < models.size(); ++v) {
+      if (models[v]->seg_uses_sparse_distribution()) sparse.push_back(v);
+      else {
+        dense.push_back(v);
+        running_counts.emplace_back(models[v]->M, 0.0);
+      }
+    }
+  }
   // Identical eligible populations share both the stopping rule and kernels.
   // Views refer to analysis-owned R vectors; no n-by-variable copy is needed.
   std::vector<const double*> eligible;
@@ -618,8 +662,8 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
     const auto candidates=relational ? graph->find(i,largest,knn,eligible) :
                                       euclidean->find(i,largest,knn,eligible);
     ++focal_searches;
-    for(int b=0;b<B;++b) {
-      if(knn) {
+    if (knn) {
+      for (int b : band_order) {
         for(std::size_t g=0;g<eligible.size();++g) {
           arma::vec T_i(const_cast<double*>(eligible[g]),n,false);
           const NeighborhoodWeights c=seg_population_knn_weights(candidates,T_i,bands[b],power,
@@ -638,10 +682,41 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
           }
           for(int v:members[g]) models[v]->seg_process_neighborhood(i,b,c);
         }
-        continue;
       }
-      const NeighborhoodWeights c=seg_radius_weights(candidates,bands[b],power,weighting,normalize);
-      for(auto& model:models) model->seg_process_neighborhood(i,b,c);
+    } else if (reuse_radius_weights) {
+      // Keep raw counts across bands. Only the sparse rank path needs the
+      // weighted prefix; dense analyses score a copy of their running counts.
+      for (auto& counts : running_counts) std::fill(counts.begin(), counts.end(), 0.0);
+      NeighborhoodWeights prefix;
+      std::size_t next = 0;
+      for (int b : band_order) {
+        while (next < candidates.size() && candidates[next].d <= bands[b]) {
+          const auto& nb = candidates[next++];
+          const double weight = seg_weight(nb.d, 1.0, power, weighting);
+          for (std::size_t v = 0; v < dense.size(); ++v)
+            models[dense[v]]->seg_add_neighbor(running_counts[v], nb.id, weight);
+          if (!sparse.empty()) {
+            prefix.ids.push_back(nb.id);
+            prefix.weights.push_back(weight);
+          }
+        }
+        for (std::size_t v = 0; v < dense.size(); ++v)
+          models[dense[v]]->seg_process_counts(i, b, running_counts[v], next);
+        for (std::size_t v : sparse)
+          models[v]->seg_process_neighborhood(i, b, prefix);
+      }
+    } else {
+      double nearest_positive = std::numeric_limits<double>::infinity();
+      if (weighting == Inverse) {
+        const auto first = std::upper_bound(candidates.begin(), candidates.end(), 0.0,
+          [](double d, const Neighbor& nb) { return d < nb.d; });
+        if (first != candidates.end()) nearest_positive = first->d;
+      }
+      for (int b : band_order) {
+        const auto c = seg_radius_weights(candidates, bands[b], power, weighting,
+                                          normalize, nearest_positive);
+        for (auto& model : models) model->seg_process_neighborhood(i, b, c);
+      }
     }
   }
   List out(variables.size());
