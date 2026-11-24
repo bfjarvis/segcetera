@@ -26,7 +26,7 @@ This vignette provides an overview of key features of the segcetera package, sta
 Before we get going, let's load the packages used in this vignette:
 
 ```{r packages, message=FALSE, warning=FALSE}
-#library(segcetera)
+library(segcetera)
 library(sf)
 library(dplyr)
 library(tidyr)
@@ -39,7 +39,7 @@ I use `seg_pattern()` to generate one city with 3,000 people in a square. Each p
 set.seed(2026)
 side <- 1000
 city <- seg_pattern(
-  N = 5000L,
+  N = 20000L,
   side = side,
   cycles = 1,
   center.locations = 2,
@@ -65,26 +65,32 @@ city |>
 
 ## Individual-level data
 
+The main workhorse of the `segcetera` package is `seg_measure`. This is the function that prepares the data for and then calls the compiled computational engine. 
 We can pass the microdata directly to `seg_measure()`. A column name supplied as the `variables` argument is shorthand for a categorical variable. While `sf` objects can be used to implicitly define the geometry, and hence the relative positions of groups in space, the user can also explicitly identify coordinate columns when working with plain data frames, in this case by specifying `coords=c("x","y")`. 
 
-The user can also specifyin
+The work
+
+The user can, and should, specify multiple bandwidths when performing segregation and local environment calculations using the `seg_measure` function. 
 
 
 Passing
 all the bandwidths in one call lets the engine reuse its neighbor search.
 
 ```{r micro-indices}
-bands <- c(10, 50, seq(100, 1000, by = 100))
-result <- seg_measure(
-  city,
-  variables = "group",
-  coords = c("x", "y"),
-  bands = bands,
-  neighbors = "radius",
-  measures = "all",
-  weighting = "biweight",
-  scope = "both",
-  output = "localenv"
+bands <- c(10, 50, seq(100, 500, by = 50))
+system.time(
+  result <- seg_measure(
+    city,
+    variables = "group",
+    coords = c("x", "y"),
+    bands = bands,
+    neighbors = "radius",
+    search = "brute",
+    measures = "all",
+    weighting = "unweighted",
+    scope = "both",
+    output = "full"
+  )
 )
 ```
 

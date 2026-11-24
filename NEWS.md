@@ -1,5 +1,8 @@
 # segcetera (development version)
 
+- Brute-force radius searches filter candidates by squared distance before
+  calculating square roots, preserving inclusive radii.
+
 - Accelerated kernel evaluation for integer powers 1-4 and reused radius-weight
   buffers across bandwidths and focal locations, reducing allocation overhead.
 

@@ -38,9 +38,23 @@ public:
     std::vector<Neighbor> out;
     if (!tree) {
       out.reserve(x.n_elem);
-      for (std::size_t j = 0; j < x.n_elem; ++j) {
-        const double d = distance(focal, j);
-        if (knn || d <= threshold) out.push_back({static_cast<int>(j), d});
+      if (knn) {
+        for (std::size_t j = 0; j < x.n_elem; ++j)
+          out.push_back({static_cast<int>(j), distance(focal, j)});
+      } else {
+        // Keep rounded boundary distances for the final inclusive radius check.
+        const double radius_bound = std::nextafter(threshold,
+          std::numeric_limits<double>::infinity());
+        const double squared_cutoff = radius_bound * radius_bound;
+        const double focal_x = x[focal], focal_y = y[focal];
+        for (std::size_t j = 0; j < x.n_elem; ++j) {
+          const double dx = focal_x - x[j];
+          const double dy = focal_y - y[j];
+          const double squared_distance = dx * dx + dy * dy;
+          if (squared_distance > squared_cutoff) continue;
+          const double d = std::sqrt(squared_distance);
+          if (d <= threshold) out.push_back({static_cast<int>(j), d});
+        }
       }
     } else if (!knn) {
       const double infinity = std::numeric_limits<double>::infinity();

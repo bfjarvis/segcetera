@@ -28,6 +28,30 @@ test_that("KNN includes tied boundary populations proportionately", {
   expect_equal(reordered$analyses$g$indices,indexed$analyses$g$indices,tolerance=1e-12)
 })
 
+test_that("brute squared-distance filters preserve rounded radius boundaries", {
+  d <- data.frame(x = c(0, 0, .8, 3, 3, 9, 10),
+                  y = c(0, 0, .8, 4, 4 + 16 * .Machine$double.eps, 4, 0),
+                  a = c(2, 0, 1, 0, 3, 1, 0), b = c(0, 2, 1, 3, 0, 2, 1))
+  vars <- list(g = seg_categorical(c("a", "b")))
+  boundary <- sqrt(97)
+  bands <- c(20, 0, 1, 5, boundary * (1 - .Machine$double.eps),
+             boundary, boundary * (1 + .Machine$double.eps), 1)
+  distances <- as.matrix(dist(d[c("x", "y")]))
+  for (kernel in c("unweighted", "biweight", "inverse", "exponential")) {
+    run <- function(search) seg_measure(d, vars, coords = c("x", "y"),
+      bands = bands, weighting = kernel, search = search, output = "full")
+    brute <- run("brute")
+    expect_equal(brute$analyses, run("boost")$analyses, tolerance = 1e-12)
+    if (kernel == "unweighted") {
+      expected <- lapply(bands, function(band) {
+        counts <- (distances <= band) %*% as.matrix(d[c("a", "b")])
+        unname(counts / rowSums(counts))
+      })
+      expect_equal(unname(lapply(brute$analyses$g$env, unname)), expected)
+    }
+  }
+})
+
 test_that("coincident observations share a fractional boundary after the focal", {
   d <- data.frame(x=0,y=0,g=c("a","b","b","b"))
   r <- seg_measure(d,list(g=seg_categorical(vars="g")),coords=c("x","y"),
