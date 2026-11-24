@@ -657,6 +657,7 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
     members[group].push_back(v);
   }
   int focal_searches=0;
+  NeighborhoodWeights radius_weights;
   for(int i=0;i<n;++i) {
     if(i%256==0) checkUserInterrupt();
     const auto candidates=relational ? graph->find(i,largest,knn,eligible) :
@@ -713,9 +714,10 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
         if (first != candidates.end()) nearest_positive = first->d;
       }
       for (int b : band_order) {
-        const auto c = seg_radius_weights(candidates, bands[b], power, weighting,
-                                          normalize, nearest_positive);
-        for (auto& model : models) model->seg_process_neighborhood(i, b, c);
+        seg_radius_weights(radius_weights, candidates, bands[b], power, weighting,
+                           normalize, nearest_positive);
+        for (auto& model : models)
+          model->seg_process_neighborhood(i, b, radius_weights);
       }
     }
   }

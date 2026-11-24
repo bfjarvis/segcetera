@@ -85,3 +85,39 @@ test_that("running counts and sparse exact ranks coexist across radius bands", {
     }
   }
 })
+
+test_that("kernel powers and reused radius buffers match direct weighted counts", {
+  d <- data.frame(x = c(0, 0, .3, .6, 1, 2), y = c(0, 0, .4, 0, 0, 0),
+                  a = c(2, 0, 1, 0, 3, 1), b = c(0, 2, 1, 3, 0, 2))
+  distances <- as.matrix(dist(d[c("x", "y")]))
+  counts <- as.matrix(d[c("a", "b")])
+  bands <- c(2, 0, .6, .6, 1)
+  vars <- list(g = seg_categorical(c("a", "b")))
+  for (power in c(1:4, 2.5, 5)) {
+    for (kernel in c("biweight", "inverse")) {
+      for (normalize in c(FALSE, TRUE)) {
+        expected <- lapply(bands, function(band) {
+          bw <- if (normalize && band > 0) band else 1
+          unname(t(vapply(seq_len(nrow(d)), function(i) {
+            distance <- distances[i, ]
+            inside <- distance <= band
+            if (kernel == "inverse") {
+              positive <- distance[inside & distance > 0]
+              distance[distance == 0] <- if (length(positive)) min(positive) / 2 else bw
+              w <- 1 / (distance / bw)^power
+            } else {
+              w <- pmax(1 - (distance / bw)^power, 0)^power
+            }
+            w[!inside] <- 0
+            local <- colSums(counts * w)
+            local / sum(local)
+          }, numeric(2))))
+        })
+        result <- seg_measure(d, vars, coords = c("x", "y"), bands = bands,
+          weighting = kernel, power = power, normalize = normalize, output = "full")
+        expect_equal(unname(lapply(result$analyses$g$env, unname)), expected,
+                     tolerance = 1e-12)
+      }
+    }
+  }
+})

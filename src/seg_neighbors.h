@@ -21,13 +21,25 @@ inline void seg_order_neighbors(std::vector<Neighbor>& neighbors, int focal,
   }
 }
 
+// Common integer powers avoid general exponentiation in the kernel hot path.
+inline double seg_power(double value, double power) {
+  if (power == 1.0) return value;
+  if (power == 2.0) return value * value;
+  if (power == 3.0) return value * value * value;
+  if (power == 4.0) {
+    const double squared = value * value;
+    return squared * squared;
+  }
+  return std::pow(value, power);
+}
+
 inline double seg_weight(double d, double bw, double power, int weighting) {
   const double scaled = d / bw;
   switch (weighting) {
   case Unweighted: return 1.0;
   case Biweight: return d > bw ? 0.0 :
-    std::max(0.0, std::pow(1.0 - std::pow(scaled, power), power));
-  case Inverse: return 1.0 / std::pow(scaled, power);
+    std::max(0.0, seg_power(1.0 - seg_power(scaled, power), power));
+  case Inverse: return 1.0 / seg_power(scaled, power);
   default: return std::exp(-scaled);
   }
 }
@@ -58,19 +70,24 @@ inline bool seg_populations_reached(const std::vector<PopulationSum>& sums,
   });
 }
 
-inline NeighborhoodWeights seg_radius_weights(const std::vector<Neighbor>& neighbors,
+inline void seg_radius_weights(NeighborhoodWeights& out,
+    const std::vector<Neighbor>& neighbors,
     double band, double power, int weighting, bool normalized,
     double nearest_positive) {
-  NeighborhoodWeights out;
+  // Refill caller-owned buffers; capacity persists across bands and focal rows.
+  const auto end = std::upper_bound(neighbors.begin(), neighbors.end(), band,
+    [](double distance, const Neighbor& neighbor) { return distance < neighbor.d; });
+  const std::size_t count = end - neighbors.begin();
+  out.ids.resize(count);
+  out.weights.resize(count);
   const double bw = normalized && band > 0 ? band : 1.0;
   const double tolerance = nearest_positive <= band ? nearest_positive / 2 : bw;
-  for (const auto& nb : neighbors) {
-    if (nb.d > band) break;
+  for (std::size_t j = 0; j < count; ++j) {
+    const auto& nb = neighbors[j];
     const double d = weighting == Inverse && nb.d == 0 ? tolerance : nb.d;
-    out.ids.push_back(nb.id);
-    out.weights.push_back(seg_weight(d, bw, power, weighting));
+    out.ids[j] = nb.id;
+    out.weights[j] = seg_weight(d, bw, power, weighting);
   }
-  return out;
 }
 
 inline NeighborhoodWeights seg_population_knn_weights(const std::vector<Neighbor>& neighbors,

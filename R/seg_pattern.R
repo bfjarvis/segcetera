@@ -22,6 +22,23 @@
 #'   final agent score. Supply any subset of the names `resource`, `status`,
 #'   and `group`. Omitted coefficients retain defaults of 1, 0, and 0,
 #'   respectively. Unnamed entries are ignored.
+#' @param center positive number indicating how much locations and groups
+#'   should be centralized. Overrides separate agent and location centers.
+#' @param center.locations positive number indicating how much locations
+#'   should be centralized.
+#' @param center.agents positive number indicating how much particular groups
+#'   should be centralized.
+#' @param pow positive number indicating how deep the valleys
+#'   are in the periodic structure for agents and locations. Overrides
+#'   `pow.locations` and `pow.agents` arguments.
+#' @param pow.locations positive number indicating how deep the valleys
+#'   are in the periodic structure for creating locations.
+#' @param pow.agents positive number indicating how deep the valleys
+#'   are in the periodic structure when assigning agents to locations.
+#' @param coef.score Numeric weights for the standardized attributes in the
+#'   final agent score. Supply any subset of the names `resource`, `status`,
+#'   and `group`. Omitted coefficients retain defaults of 1, 0, and 0,
+#'   respectively. Unnamed entries are ignored.
 #' @details The mean and Gini are distribution parameters; realized sample
 #'   values vary. Category sizes are rounded to integers by assigning
 #'   remaining agents to categories with the largest fractional remainders.
@@ -42,16 +59,23 @@ seg_pattern <- function(
   N = 1000L,
   side = 1L,
   cycles = 1,
-  center = 1,
   resource.gini = 0.5,
   resource.mean = 10,
   status = c(low = 1, middle = 1, upper = 1),
   group = c(B = 1, A = 1),
   noise.agents = 1,
   noise.location = 1,
-  coef.score = NULL
+  center = 1,
+  center.locations = NULL,
+  center.agents = NULL,
+  pow = 2,
+  pow.locations = NULL,
+  pow.agents = NULL,
+  coef.score = NULL,
+  grid = c("square", "hex", "runif")
 ) {
   coefficients <- c(resource = 1, status = 0, group = 0)
+  grid <- match.arg(grid)
   if (!is.null(coef.score)) {
     if (!is.numeric(coef.score) || !is.null(dim(coef.score))) {
       stop("'coef.score' must be a numeric vector", call. = FALSE)
@@ -65,8 +89,12 @@ seg_pattern <- function(
       keys <- labels[named]
       unknown <- setdiff(keys, names(coefficients))
       if (length(unknown)) {
-        stop("Unknown 'coef.score' name(s): ", paste(unknown, collapse = ", "),
-             ". Use resource, status, or group.", call. = FALSE)
+        stop(
+          "Unknown 'coef.score' name(s): ",
+          paste(unknown, collapse = ", "),
+          ". Use resource, status, or group.",
+          call. = FALSE
+        )
       }
       if (anyDuplicated(keys)) {
         stop("'coef.score' names must be unique", call. = FALSE)
@@ -77,6 +105,18 @@ seg_pattern <- function(
       coefficients[keys] <- coef.score[named]
     }
   }
+  if (is.null(pow.locations)) {
+    pow.locations <- pow
+  }
+  if (is.null(pow.agents)) {
+    pow.agents <- pow
+  }
+  if (is.null(center.locations)) {
+    center.locations <- center
+  }
+  if (is.null(center.agents)) {
+    center.agents <- center
+  }
 
   scalars <- list(
     N = N,
@@ -86,7 +126,9 @@ seg_pattern <- function(
     resource.gini = resource.gini,
     resource.mean = resource.mean,
     noise.agents = noise.agents,
-    noise.location = noise.location
+    noise.location = noise.location,
+    pow.locations = pow.locations,
+    pow.agents = pow.agents
   )
   for (name in names(scalars)) {
     value <- scalars[[name]]
@@ -157,11 +199,12 @@ seg_pattern <- function(
       ties.method = "first"
     )
   }
-  location_utility <- function(x, y) {
+  location_utility <- function(x, y, center, pow) {
     x <- x / side
     y <- y / side
     periodic <- cos(2 * pi * (cycles * x)) * cos(2 * pi * (cycles * y))
-    standardize(periodic) - center * standardize(x^2 + y^2)
+    # -((x^2 + y^2)^center) * periodic^pow
+    -center * (standardize(x^2 + y^2)) + standardize(periodic^pow)
   }
 
   log_sd <- sqrt(2) * stats::qnorm(resource.gini / 2 + 0.5)
@@ -181,25 +224,57 @@ seg_pattern <- function(
     noise.agents
   )]
   score <- fuzzy_rank(
-    coefficients[["resource"]] * standardize(resource) +
+    coefficients[["resource"]] *
+      standardize(resource) +
       coefficients[["status"]] * standardize(as.integer(status)) +
       coefficients[["group"]] * standardize(as.integer(group)),
     noise.agents
   )
+  if (grid == 'runif') {
+    locations <- data.frame(
+      x = stats::runif(2 * N, -side / 2, side / 2),
+      y = stats::runif(2 * N, -side / 2, side / 2)
+    )
+  }
+  if (grid %in% c('hex', 'square')) {
+    sfc <- st_sfc(st_polygon(list(rbind(
+      c(-side / 2, -side / 2),
+      c(side / 2, -side / 2),
+      c(side / 2, side / 2),
+      c(-side / 2, -side / 2)
+    ))))
+    if (grid == 'hex') {
+      locations <- st_coordinates(st_make_grid(
+        sfc,
+        what = "centers",
+        n = ceiling(1.4 * rep(sqrt(N), 2)),
+        square = FALSE
+      ))
+    } else if (grid == "square") {
+      locations <- st_coordinates(st_make_grid(
+        sfc,
+        what = "centers",
+        n = ceiling(1.5 * rep(sqrt(N), 2))
+      ))
+    }
+    locations <- as.data.frame(locations)
+    names(locations) <- c("x", "y")
+  }
+  locations$point_id <- seq_len(nrow(locations))
 
-  locations <- data.frame(
-    point_id = seq_len(2 * N),
-    x = stats::runif(2 * N, -side / 2, side / 2),
-    y = stats::runif(2 * N, -side / 2, side / 2)
+  utility <- location_utility(
+    locations$x,
+    locations$y,
+    center.locations,
+    pow.locations
   )
-  utility <- location_utility(locations$x, locations$y)
   locations <- locations[
-    fuzzy_rank(utility, noise.location) > N,
+    fuzzy_rank(utility, noise.location) > (nrow(locations) - N),
     ,
     drop = FALSE
   ]
   locations$score <- rank(
-    -location_utility(locations$x, locations$y),
+    -location_utility(locations$x, locations$y, center.agents, pow.agents),
     ties.method = "first"
   )
   rownames(locations) <- NULL

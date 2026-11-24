@@ -1,5 +1,8 @@
 # segcetera (development version)
 
+- Accelerated kernel evaluation for integer powers 1-4 and reused radius-weight
+  buffers across bandwidths and focal locations, reducing allocation overhead.
+
 - Renamed the package from `spseg` to `segcetera`. Use `seg_measure()`
   for segregation calculations and the `seg_` prefix for public helpers.
   The bundled example data are now available as `seg_data`.

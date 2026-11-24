@@ -101,6 +101,7 @@ seg_routines <- tibble::tribble(
   "seg_neighbor_distance_less", "src/seg_neighbors.h", "native",
   "seg_order_neighbors", "src/seg_neighbors.h", "native",
   "seg_weight", "src/seg_neighbors.h", "native",
+  "seg_power", "src/seg_neighbors.h", "native",
   "PopulationSum::add", "src/seg_neighbors.h", "native",
   "seg_populations_reached", "src/seg_neighbors.h", "native",
   "seg_radius_weights", "src/seg_neighbors.h", "native",
@@ -270,6 +271,7 @@ seg_calls <- tibble::tribble(
   "EuclideanSearch::find", "seg_order_neighbors", "call",
   "seg_order_neighbors", "seg_neighbor_distance_less", "callback",
   "seg_radius_weights", "seg_weight", "call",
+  "seg_weight", "seg_power", "call",
   "seg_population_knn_weights", "PopulationSum::add", "call",
   "seg_population_knn_weights", "seg_weight", "call",
   # Network search and Boost callbacks
