@@ -1,4 +1,48 @@
-# spseg (development version)
+# segcetera 0.9-1
+
+- Updated `seg_pattern()` help for its grid and utility arguments, validated
+  separate centralization settings, restored the documented column order, and
+  kept generated lattice points within the specified square domain.
+  Repaired the getting-started examples and reduced their demonstration size
+  for package checks. Declared the Rcpp runtime import explicitly and excluded
+  editor files and scratch vignette artifacts from source builds.
+
+- Brute-force radius searches filter candidates by squared distance before
+  calculating square roots, preserving inclusive radii.
+
+- Accelerated kernel evaluation for integer powers 1-4 and reused radius-weight
+  buffers across bandwidths and focal locations, reducing allocation overhead.
+
+- Renamed the package from `spseg` to `segcetera`. Use `seg_measure()`
+  for segregation calculations and the `seg_` prefix for public helpers.
+  The bundled example data are now available as `seg_data`.
+
+- Added `seg_pattern()` to generate synthetic agent attributes and residential
+  locations for examples, testing, and teaching.
+
+- Added `seg_surface()` to construct and audit gridded or pycnophylactic
+  population surfaces independently of segregation calculations.
+
+- Grid and pycnophylactic surfaces report fallback outcomes in one warning.
+  Inspect `surface_info$fallback$failed_ids` for source polygons whose counts
+  could not be placed on the grid.
+
+- Continuous interval input and aggregate counts now retain input categories
+  for default local shares, exposure, and pairwise indices. Explicit summary
+  probabilities request quantile groups, with the existing warning when interval
+  categories require proportional splitting. Numeric microdata retain quartiles.
+
+- Continuous inputs now default to `representation = "auto"`: numeric microdata
+  and counts with scores use exact values; ordered factors, explicit membership
+  levels, and count columns without scores use intervals. Explicit overrides
+  remain available, and analysis definitions record the resolved representation.
+
+- Raw polygon analyses now use `sf::st_point_on_surface()` by default. Select
+  `polygon_points = "centroid"` for centroids, also in `seg_default_bands()`.
+  Grid-cell assignment and surface fallback rules retain their existing behavior.
+
+- Surface-construction vignette figures use a temporary directory, keeping
+  generated plot files out of the source checkout.
 
 - Exposure tables now use `reference` for the focal population and `target`
   for the neighboring category. Rank profiles use `reference` alongside the
@@ -48,7 +92,7 @@
   `counts` arguments without compatibility aliases. Single-column count input
   is no longer supported; supply memberships/values with population weights.
 
-- Added an R/hexSticker logo recipe that spells `spseg` through spatial sorting
+- Added an R/hexSticker logo recipe that spells `segcetera` through spatial sorting
   of continuous resources with viridis colors. Run `project/create-logo.R` to
   regenerate `man/figures/logo.png` for the GitHub README; this development-only
   script is excluded from package builds.
@@ -79,7 +123,7 @@
   C++ configuration codes now have descriptive names. Pycnophylactic smoothing
   reuses iteration buffers and precomputes fixed zone cell counts.
 
-- `spseg(variables = ...)` now accepts column-name shorthand for a categorical
+- `seg_measure(variables = ...)` now accepts column-name shorthand for a categorical
   variable. One column selects observed memberships; multiple columns select
   category counts. A message states the assumption and the result name.
 
@@ -100,10 +144,10 @@
 - Documented a fresh-session workflow for local installation and restarting after
   replacing a loaded package, avoiding stale lazy-load and installed-help state.
 
-- Consolidated variable specifications into `spseg_categorical()`,
-  `spseg_ordinal()`, and `spseg_continuous()`. Continuous specifications now
+- Consolidated variable specifications into `seg_categorical()`,
+  `seg_ordinal()`, and `seg_continuous()`. Continuous specifications now
   select `representation = "exact"` (default) or `"intervals"`, including
-  interval membership and ordered interval counts. Removed `spseg_grouped()`
+  interval membership and ordered interval counts. Removed `seg_grouped()`
   without an alias. Continuous results report their representation separately
   from the variable type; calculation methods and compact environments are unchanged.
 
@@ -126,12 +170,12 @@
   boundary, including cases affected by square-root rounding.
 - Supplied networks now support shortest-path hop or nonnegative-cost neighborhoods
   through Boost.Graph, with optional geometry, transit nodes, and variable-specific
-  population KNN. Added `spseg_network()` and a network/road-preparation vignette.
+  population KNN. Added `seg_network()` and a network/road-preparation vignette.
 
-* Renamed the package to `spseg`, with `spseg_*` constructors, result classes,
+* Renamed the package to `segcetera`, with `seg_*` constructors, result classes,
   default-band helper, and native bindings. Examples and internal helpers use
   the same naming convention; no compatibility aliases are retained.
-* Pre-1.0 development: `spseg()` requires named categorical, ordinal, grouped-continuous, and
+* Pre-1.0 development: `seg_measure()` requires named categorical, ordinal, grouped-continuous, and
   observed-continuous specifications, sharing spatial discovery.
 * Multiple-variable kNN selects each variable's eligible population, including
   variable-specific boundary fractions and adaptive kernel radii. Thresholds
@@ -150,7 +194,7 @@
   supports raw support and shared grid/pycnophylactic construction for count specifications.
 * Removed the previous calling convention, duplicate result methods, and
   categorical calculation engine. Every call uses variable specifications,
-  one calculation engine, and named analyses in a `spseg_result`.
+  one calculation engine, and named analyses in a `seg_result`.
 * Removed the pre-fork concentration-profile, standalone dissimilarity, and
   spatial-proximity functions, their adjustment helpers, the old data validator,
   and unused test fixtures. Default bands use the current coordinate/population

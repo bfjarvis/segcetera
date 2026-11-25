@@ -1,15 +1,15 @@
 output_example <- function(variables, ...) {
   d <- data.frame(x = 1:4, y = 0, a = c(4, 2, 1, 0), b = c(0, 2, 3, 4),
     c = c(1, 1, 1, 1), value = c(1, 2, 5, 10))
-  spseg(d, variables, coords = c("x", "y"), bands = c(0, 2.5),
+  seg_measure(d, variables, coords = c("x", "y"), bands = c(0, 2.5),
     population = rowSums(d[c("a", "b", "c")]), ...)
 }
 
 test_that("variable settings inherit global defaults and override explicitly", {
-  constructors <- list(spseg_categorical, spseg_ordinal, spseg_continuous)
+  constructors <- list(seg_categorical, seg_ordinal, seg_continuous)
   for (constructor in constructors) {
     spec <- constructor(vars = c("a", "b", "c"))
-    if (identical(constructor, spseg_continuous)) spec$scores <- c(1, 2, 3)
+    if (identical(constructor, seg_continuous)) spec$scores <- c(1, 2, 3)
     inherit <- output_example(list(v = spec), scope = "overall", output = "full",
       keep_scores = TRUE, keep_contributions = TRUE)$analyses$v
     expect_equal(inherit$settings, list(scope = "overall", output = "full",
@@ -32,13 +32,30 @@ test_that("variable settings inherit global defaults and override explicitly", {
   }
 })
 
+test_that("constructors and segcetera validate options at their own boundaries", {
+  constructors <- list(seg_categorical, seg_ordinal, seg_continuous)
+  for (constructor in constructors) {
+    expect_identical(constructor("value")$na.action, "fail")
+    expect_identical(constructor("value", na.action = "omit")$na.action, "omit")
+    expect_error(constructor("value", na.action = "invalid"), "should be one of")
+    expect_null(constructor("value", keep_scores = NULL)$keep_scores)
+    expect_error(constructor("value", keep_scores = NA),
+                 "'keep_scores' must be NULL, TRUE, or FALSE", fixed = TRUE)
+  }
+  variables <- list(v = seg_categorical("a"))
+  expect_error(output_example(variables, keep_scores = NULL),
+               "'keep_scores' must be TRUE or FALSE", fixed = TRUE)
+  expect_error(output_example(variables, keep_contributions = c(TRUE, FALSE)),
+               "'keep_contributions' must be TRUE or FALSE", fixed = TRUE)
+})
+
 test_that("mixed storage retains shared input once and extracts available results", {
   variables <- list(
-    full = spseg_categorical(vars = c("a", "b", "c"), output = "full",
+    full = seg_categorical(vars = c("a", "b", "c"), output = "full",
       scope = "both", keep_scores = TRUE),
-    indices = spseg_ordinal(vars = c("a", "b", "c"), scope = "overall",
+    indices = seg_ordinal(vars = c("a", "b", "c"), scope = "overall",
       keep_contributions = TRUE),
-    env = spseg_continuous(vars = "value", output = "localenv"))
+    env = seg_continuous(vars = "value", output = "localenv"))
   result <- output_example(variables, scope = "pairwise", output = "indices")
   for (name in names(variables)) {
     separate <- output_example(variables[name], scope = "pairwise", output = "indices")
@@ -64,12 +81,12 @@ test_that("variable output overrides control geometry and surface recompilation"
     c(xmin = 0, ymin = 0, xmax = 3, ymax = 1), crs = sf::st_crs(3857))),
     n = c(3, 1))
   x <- sf::st_sf(a = c(4, 2, 1), b = c(1, 2, 4), geometry = shapes)
-  specs <- list(stored = spseg_categorical(vars = c("a", "b"), output = "full"),
-    lean = spseg_ordinal(vars = c("a", "b"), output = "indices", scope = "overall"))
+  specs <- list(stored = seg_categorical(vars = c("a", "b"), output = "full"),
+    lean = seg_ordinal(vars = c("a", "b"), output = "indices", scope = "overall"))
   for (surface in c("raw", "grid")) {
     args <- if (surface == "grid")
       list(celldim = .5, surface_geometry = "points") else list()
-    result <- do.call(spseg, c(list(x = x, variables = specs, bands = 1.5,
+    result <- do.call(seg_measure, c(list(x = x, variables = specs, bands = 1.5,
       surface = surface, output = "localenv"), args))
     expect_equal(result$analyses$stored$settings$output, "full")
     expect_equal(result$analyses$lean$settings$output, "indices")
@@ -79,7 +96,7 @@ test_that("variable output overrides control geometry and surface recompilation"
     expect_equal(unique(spatial$variable), "stored")
     expect_equal(length(result$geometry), nrow(result$coords))
     specs$stored$output <- "indices"
-    lean <- do.call(spseg, c(list(x = x, variables = specs, bands = 1.5,
+    lean <- do.call(seg_measure, c(list(x = x, variables = specs, bands = 1.5,
       surface = surface, output = "full"), args))
     expect_null(lean$coords)
     expect_null(lean$geometry)
@@ -89,7 +106,7 @@ test_that("variable output overrides control geometry and surface recompilation"
 })
 
 test_that("constructor overrides validate choices and nullable logical flags", {
-  for (constructor in list(spseg_categorical, spseg_ordinal, spseg_continuous)) {
+  for (constructor in list(seg_categorical, seg_ordinal, seg_continuous)) {
     expect_error(constructor(vars = c("a", "b"), scope = "multigroup"), "arg")
     expect_error(constructor(vars = c("a", "b"), output = "unknown"), "arg")
     expect_error(constructor(vars = c("a", "b"), keep_scores = NA), "keep_scores")
@@ -104,11 +121,11 @@ test_that("constructor overrides validate choices and nullable logical flags", {
 
 test_that("pairwise-only ordered input preserves exposure independently", {
   variables <- list(
-    ordinal = spseg_ordinal(vars = c("a", "b", "c")),
-    intervals = spseg_continuous(vars = c("a", "b", "c"),
+    ordinal = seg_ordinal(vars = c("a", "b", "c")),
+    intervals = seg_continuous(vars = c("a", "b", "c"),
       representation = "intervals", summary = list(probs = c(.35, .8))),
-    exact = spseg_continuous(vars = "value"),
-    ranks = spseg_continuous(vars = "value",
+    exact = seg_continuous(vars = "value"),
+    ranks = seg_continuous(vars = "value",
       summary = list(type = "quantiles")))
   both <- output_example(variables, scope = "both")
   pairwise <- output_example(variables, scope = "pairwise",
@@ -128,10 +145,10 @@ test_that("pairwise-only ordered input preserves exposure independently", {
 
 test_that("network extraction retains keys for variable-specific local output", {
   d <- data.frame(node = c("c", "a", "b"), a = c(0, 2, 1), b = c(2, 0, 1))
-  net <- spseg_network(data.frame(from = c("a", "b"), to = c("b", "c")))
-  result <- spseg(d, list(
-    scores = spseg_categorical(vars = c("a", "b"), keep_scores = TRUE),
-    env = spseg_ordinal(vars = c("a", "b"), output = "localenv")),
+  net <- seg_network(data.frame(from = c("a", "b"), to = c("b", "c")))
+  result <- seg_measure(d, list(
+    scores = seg_categorical(vars = c("a", "b"), keep_scores = TRUE),
+    env = seg_ordinal(vars = c("a", "b"), output = "localenv")),
     network = net, node_id = "node", bands = 1)
   for (what in c("scores", "env")) {
     rows <- as.data.frame(result, what = what)

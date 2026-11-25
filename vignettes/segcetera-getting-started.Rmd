@@ -1,0 +1,550 @@
+---
+title: "An overview of segcetera: from people to population surfaces"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{An overview of segcetera: from people to population surfaces}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  dpi = 120
+)
+```
+
+`segcetera` is a package for calculating bespoke local environments and segregation measures in R. It is heavily inspired by the methodological innovations in segregation measurement that Sean Reardon, David O'Sullivan, Kendra Bischoff, and colleagues presented in a series of papers in the 2000s and 2010s. The package synthesizes these methodological innovations into a coherent measurement framework supported by a `seg_result` class and corresponding extraction methods. The heaviest computations use compiled C++ code, with Boost C++ libraries supporting bandwidth-based and k-nearest-neighbor searches in Euclidean spaces and on graphs.
+
+This vignette provides an overview of key features of the segcetera package, starting from a simulated data set featuring individuals characterized by a categorical group membership, an ordinal status, and a continuous covariate. I start by focussing on the categorical group membership variable, illustrating how the package can be used to measure segregation using micro-data and aggregated data. I also show how bespoke local environments can be extracted from the results. I then move on to examine segregation measurement for ordinal and continuous covariates.
+
+# Group segregation
+
+Before we get going, let's load the packages used in this vignette:
+
+```{r packages, message=FALSE, warning=FALSE}
+library(segcetera)
+library(sf)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+I use `seg_pattern()` to generate one city with 1,500 people in a square. Each person belongs to group A or B. The simulated records also contain status and resources, but I ignore these for now. The `group` argument below specifies the labels for the groups and their relative sizes. When the elements of the vector are the same, then the groups will be of equal sizes.
+
+```{r simulate-pattern}
+set.seed(2026)
+side <- 1000
+city <- seg_pattern(
+  N = 1500L,
+  side = side,
+  cycles = 1,
+  center.locations = 2,
+  center.agents = 0,
+  pow = 1,
+  group = c(B = 1, A = 1),
+  noise.agents = 0.1,
+  noise.location = 2,
+  grid = 'hex'
+) |>
+  rename(resources = resource)
+```
+
+```{r group-pattern, echo=FALSE}
+theme_set(theme_minimal(base_size = 11))
+city |>
+  ggplot(aes(x, y, color = group)) +
+  geom_point() +
+  coord_equal() +
+  theme_void() +
+  labs(title = "Groups") +
+  scale_color_discrete(palette = c("red", "blue"), name = "group")
+```
+
+## Individual-level data
+
+The main workhorse of the `segcetera` package is `seg_measure`. This is the function that prepares the data for and then calls the compiled computational engine.
+We can pass the microdata directly to `seg_measure()`. A column name supplied as the `variables` argument is shorthand for a categorical variable. While `sf` objects can be used to implicitly define the geometry, and hence the relative positions of groups in space, the user can also explicitly identify coordinate columns when working with plain data frames, in this case by specifying `coords=c("x","y")`.
+
+The user can, and should, specify multiple bandwidths when performing segregation and local environment calculations using the `seg_measure` function.
+
+
+Passing
+all the bandwidths in one call lets the engine reuse its neighbor search.
+
+```{r micro-indices}
+bands <- c(10, 50, seq(100, 1000, by = 50))
+system.time(
+  result <- seg_measure(
+    city,
+    variables = "group",
+    coords = c("x", "y"),
+    bands = bands,
+    neighbors = "radius",
+    search = "boost",
+    measures = "all",
+    weighting = "unweighted",
+    scope = "both",
+    output = "full"
+  )
+)
+```
+
+The returned `seg_result` contains several kinds of output. I use
+`as.data.frame()` to extract the overall indices. We can view a slice of the dataframe as follows:
+
+```{r segstats-result}
+result |>
+  as.data.frame(what = "indices") |>
+  slice(1:10)
+```
+
+And we can also plot the segregation curves based on the extracted dataframe.
+
+```{r single-pattern-curves, fig.height=6}
+result |>
+  as.data.frame(what = "indices") |>
+  filter(band > 50) |>
+  ggplot(aes(band, value, color = measure)) +
+  geom_line() +
+  labs(x = "Bandwidth", y = "Segregation index") +
+  theme(
+    aspect.ratio = 1,
+    legend.position = "inside",
+    legend.position.inside = c(1, 1),
+    legend.justification = c(1, 1)
+  )
+```
+
+Because I requested `output = "full"`, I can use `st_as_sf()` to recover
+the local environments.
+
+```{r local-environments}
+localenvs <- st_as_sf(result, bands = c(50, 200, 400, 800))
+```
+
+This makes it easy to display the shares of As, and conversely, Bs in the local environments at select bandwidths:
+
+```{r group-local-environments, echo=FALSE}
+localenvs |>
+  filter(variable == "group", category == "B") |>
+  ggplot(aes(colour = value)) +
+  geom_sf(size = 0.3) +
+  facet_wrap(~band, labeller = label_both) +
+  scale_colour_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0.5,
+    limits = c(0, 1),
+    name = "B's\nlocal\nshare"
+  ) +
+  coord_sf(datum = NA) +
+  theme_void()
+```
+
+Exposure summarizes these environments from the perspective of different groups.
+For example, it tells us the average share of group B around members of group
+A. Isolation is own-group exposure. The exposure table keeps the direction of
+each comparison in the `reference` and `target` columns.
+
+```{r group-exposure}
+result |>
+  as.data.frame(what = "exposure", bands = 50) |>
+  knitr::kable(digits = 3)
+```
+
+## Spatially aggregated data
+
+To approximate data like those available from the US Census, I aggregate the
+same people into Voronoi polygons. I spatially join the people to the polygons
+once, then count group members within each zone.
+
+```{r voronoi-partition}
+domain <- st_as_sfc(st_bbox(c(
+  xmin = -side / 2,
+  ymin = -side / 2,
+  xmax = side / 2,
+  ymax = side / 2
+)))
+
+polygons <- 80
+set.seed(2027)
+
+voronoi <- tibble(
+  x = runif(polygons, -side / 2, side / 2),
+  y = runif(polygons, -side / 2, side / 2)
+) |>
+  st_as_sf(coords = c("x", "y")) |>
+  st_union() |>
+  st_voronoi(envelope = domain) |>
+  st_collection_extract("POLYGON") |>
+  st_intersection(domain) |>
+  st_sf(geometry = _) |>
+  mutate(zone_id = row_number())
+```
+
+```{r aggregate-group-counts}
+people <- city |>
+  st_as_sf(coords = c("x", "y")) |>
+  st_join(voronoi["zone_id"], join = st_covered_by, left = FALSE) |>
+  st_drop_geometry()
+
+nrow(people) == nrow(city)
+table(people$group) == table(city$group)
+
+group_cols <- paste0("group_", levels(city$group))
+group_counts <- people |>
+  count(zone_id, group) |>
+  pivot_wider(
+    names_from = group,
+    names_prefix = "group_",
+    values_from = n,
+    values_fill = 0
+  )
+
+voronoi_groups <- voronoi |>
+  left_join(group_counts, by = "zone_id") |>
+  mutate(across(all_of(group_cols), ~ replace_na(.x, 0)))
+```
+
+```{r voronoi-group-plot, echo=FALSE}
+voronoi_groups |>
+  mutate(
+    share_B = group_B / (group_A + group_B),
+  ) |>
+  ggplot() +
+  geom_sf(
+    aes(fill = share_B),
+    colour = "white",
+    linewidth = 0.2
+  ) +
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0.5,
+    limits = c(0, 1),
+    name = "Group B\nshare"
+  ) +
+  coord_sf(datum = NA) +
+  theme_void()
+```
+
+### Polygons as neighborhoods
+
+For aggregated data, I pass a vector of group count columns. With
+`surface = "raw"`, each polygon's counts are assigned to its representative
+point, which by default is a point on the surface. With distinct points,
+`bands = 0` uses each polygon's own composition and gives the non-spatial
+indices.
+
+```{r aggregate-nonspatial}
+result_polygons <- seg_measure(
+  voronoi_groups,
+  variables = group_cols,
+  neighbors = "radius",
+  bands = c(0, bands),
+  weighting = "biweight",
+  surface = "raw",
+  scope = "both",
+  output = "full"
+)
+```
+
+### Grid-based surfaces
+
+We can instead distribute the polygon counts over a grid. I compare
+`surface = "grid"`, which distributes the counts, with `surface = "pycno"`,
+which then smooths each group's counts while preserving effective zone totals.
+I request polygon geometry for the output so I can map the grid cells.
+
+```{r aggregate-grid}
+result_grid <- seg_measure(
+  voronoi_groups,
+  variables = group_cols,
+  neighbors = "radius",
+  bands = c(0, bands),
+  weighting = "biweight",
+  surface = "grid", # non-smoothed grid
+  nrow = 30,
+  ncol = 30,
+  scope = "overall",
+  output = "full",
+  surface_geometry = "polygons"
+)
+
+result_pycno <- seg_measure(
+  voronoi_groups,
+  variables = group_cols,
+  neighbors = "radius",
+  bands = c(0, bands),
+  weighting = "biweight",
+  surface = "pycno", # pycnophylactic smoothing
+  nrow = 30,
+  ncol = 30,
+  scope = "overall",
+  output = "full",
+  surface_geometry = "polygons"
+)
+```
+
+At band zero, the maps show each cell's own composition. For this example,
+I plot the share of group B before and after smoothing.
+
+```{r localenv-grid}
+bind_rows(
+  grid = st_as_sf(result_grid, what = "env", bands = 0),
+  pycno = st_as_sf(result_pycno, what = "env", bands = 0),
+  .id = "raster"
+) |>
+  filter(category == "group_B") |>
+  ggplot(aes(fill = value)) +
+  geom_sf() +
+  scale_fill_gradient2(
+    name = "Group B\nShare",
+    low = "blue",
+    high = "red",
+    midpoint = 0.5
+  ) +
+  facet_wrap(vars(raster), ncol = 3)
+```
+
+### Comparing the approaches
+
+Because we started with simulated microdata, we can compare estimates from the
+polygons and grids with those from the individual records. At the smallest
+bandwidths, moving a population from its observed locations to representative
+points or grid cells can change which neighbors are included.
+
+```{r micro-vs-polygon-vs-grid}
+bind_rows(
+  micro = as.data.frame(result, what = "indices"),
+  polygons = as.data.frame(result_polygons, what = "indices"),
+  grid = as.data.frame(result_grid, what = "indices"),
+  pycno = as.data.frame(result_pycno, what = "indices"),
+  .id = "approach"
+) |>
+  filter(band %in% bands) |>
+  ggplot(aes(x = band, y = value, color = approach, group = approach)) +
+  geom_line() +
+  facet_wrap(vars(measure))
+```
+
+# Adding ordinal and continuous variables
+
+## Individual-level data
+
+Now I add status and resources to the same analysis. Status is an ordered
+factor, so `seg_ordinal()` uses its level order. Resources are numeric, so
+`seg_continuous()` uses their observed values. I specify all three variables
+in a named list so they can share one neighbor search. For resources,
+`summary` sets the quartile groups used for local shares, exposure, and
+pairwise comparisons. The overall rank-order indices use the full distribution.
+
+```{r micro-multiple-variables}
+micro_variables <- list(
+  group = seg_categorical(vars = "group"),
+  status = seg_ordinal(vars = "status"),
+  resources = seg_continuous(
+    vars = "resources",
+    summary = list(type = "shares", probs = c(0.25, 0.5, 0.75))
+  )
+)
+result_micro <- seg_measure(
+  city,
+  variables = micro_variables,
+  coords = c("x", "y"),
+  bands = bands,
+  weighting = "biweight",
+  scope = "both",
+  output = "full"
+)
+```
+
+```{r micro-multiple-curves}
+result_micro |>
+  as.data.frame(what = "indices") |>
+  ggplot(aes(band, value, color = measure)) +
+  geom_line() +
+  facet_wrap(vars(variable)) +
+  labs(x = "Bandwidth", y = "Segregation index")
+```
+
+Here I map the local share of the top resource quartile. The reporting group
+labels are stored in the result, so I can select the highest group directly.
+
+```{r resource-local-environments}
+resource_groups <- result_micro$analyses$resources$definition$summary$groups$labels
+
+result_micro |>
+  st_as_sf(variables = "resources", bands = c(100, 500)) |>
+  filter(variable == "resources", category == tail(resource_groups, 1)) |>
+  ggplot(aes(colour = value)) +
+  geom_sf() +
+  facet_wrap(~band, labeller = label_both) +
+  scale_colour_viridis_c(limits = c(0, 1), name = "Q4\nShare") +
+  coord_sf(datum = NA) +
+  theme_void()
+```
+
+## Aggregated data
+
+I use the same zones as above. The status counts use the original categories.
+For resources, I cut the citywide distribution into deciles and count the
+number of people in each interval. Pivoting the variables to long form before
+counting gives marginal counts for each variable.
+
+```{r aggregate-multiple-counts}
+attribute_counts <- people |>
+  mutate(resources = as.integer(cut_number(resources, n = 10))) |>
+  select(zone_id, status, resources) |>
+  pivot_longer(c(status, resources), values_transform = as.character) |>
+  count(zone_id, name, value) |>
+  pivot_wider(names_from = c(name, value), values_from = n, values_fill = 0)
+
+status_cols <- paste0("status_", levels(city$status))
+resource_cols <- paste0("resources_", 1:10)
+voronoi_counts <- voronoi_groups |>
+  left_join(attribute_counts, by = "zone_id") |>
+  mutate(across(all_of(c(status_cols, resource_cols)), ~ replace_na(.x, 0)))
+```
+
+In the count specifications, I list ordinal categories and resource intervals
+from lowest to highest. It is the order in `vars`, not the order of the columns
+in the data frame, that establishes their meaning. I use interval counts for
+resources because the polygons record the number of people in each decile.
+
+```{r count-specifications}
+count_variables <- list(
+  group = seg_categorical(vars = group_cols),
+  status = seg_ordinal(vars = status_cols),
+  resources = seg_continuous(
+    vars = resource_cols,
+    representation = "intervals",
+    summary = list(type = "shares", probs = c(0.25, 0.5, 0.75))
+  )
+)
+result_counts <- seg_measure(
+  voronoi_counts,
+  variables = count_variables,
+  bands = bands,
+  weighting = "biweight",
+  surface = "raw",
+  scope = "both",
+  output = "full"
+)
+```
+
+With decile counts, the quartile boundaries can fall inside an interval.
+The warning identifies the proportional allocation used to report those
+quartile shares. We can compare the resulting segregation curves with the
+ones based on individual records.
+
+```{r multiple-micro-vs-counts}
+bind_rows(
+  micro = as.data.frame(result_micro, what = "indices"),
+  polygons = as.data.frame(result_counts, what = "indices"),
+  .id = "approach"
+) |>
+  filter(measure == "information") |>
+  ggplot(aes(band, value, color = approach)) +
+  geom_line() +
+  facet_wrap(vars(variable)) +
+  labs(x = "Bandwidth", y = "Information theory index")
+```
+
+# Comparing patterns in parallel
+
+We now compare the original city with three alternatives. I vary the number
+of cycles and the noise in the agent scores, holding the remaining settings
+fixed. I reset the seed so the cases start with the same random draws.
+
+```{r simulate-comparison-patterns}
+scenarios <- crossing(cycles = c(1, 3), noise.agents = c(0.1, 1.5))
+patterns <- Map(
+  function(cycles, noise.agents) {
+    if (cycles == 1 && noise.agents == 0.1) {
+      return(city)
+    }
+    set.seed(2026)
+    seg_pattern(
+      N = nrow(city),
+      side = side,
+      cycles = cycles,
+      center.locations = 2,
+      center.agents = 0,
+      pow = 1,
+      group = c(B = 1, A = 1),
+      noise.agents = noise.agents,
+      noise.location = 2,
+      grid = "hex"
+    ) |>
+      rename(resources = resource)
+  },
+  scenarios$cycles,
+  scenarios$noise.agents
+)
+names(patterns) <- paste0(
+  scenarios$cycles,
+  " cycle(s); agent noise = ",
+  scenarios$noise.agents
+)
+```
+
+Each call to `seg_measure()` handles all three variables. I distribute the
+cities across two PSOCK workers, asking for the overall indices only. The
+workers use the same variable specifications and bandwidths so the resulting
+curves are comparable.
+
+```{r parallel-patterns}
+cluster <- parallel::makePSOCKcluster(2L)
+result_patterns <- tryCatch(
+  {
+    parallel::clusterCall(
+      cluster,
+      function(paths) .libPaths(paths),
+      .libPaths()
+    )
+    parallel::parLapply(
+      cluster,
+      patterns,
+      function(x, variables, bands) {
+        segcetera::seg_measure(
+          x,
+          variables = variables,
+          coords = c("x", "y"),
+          bands = bands,
+          weighting = "biweight",
+          measures = "information",
+          scope = "overall"
+        )
+      },
+      variables = micro_variables,
+      bands = bands
+    )
+  },
+  finally = parallel::stopCluster(cluster)
+)
+```
+
+I bind the results into one table with a column identifying the case, then
+plot how segregation for each variable changes with bandwidth.
+
+```{r patterns-indices}
+result_patterns |>
+  lapply(as.data.frame, what = "indices") |>
+  bind_rows(.id = "pattern") |>
+  ggplot(aes(x = band, y = value, group = pattern, color = pattern)) +
+  geom_line() +
+  facet_wrap(vars(variable)) +
+  labs(x = "Bandwidth", y = "Information theory index")
+```
+
+The [multiple-variable guide](segcetera-multiple-variables.html) gives measurement
+definitions and sources. The [surface guide](segcetera-surface-construction.html)
+examines allocation, smoothing, and conservation. For supplied adjacency or road
+networks, see [network segregation](segcetera-networks.html).
