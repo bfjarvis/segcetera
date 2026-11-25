@@ -39,7 +39,7 @@ I use `seg_pattern()` to generate one city with 3,000 people in a square. Each p
 set.seed(2026)
 side <- 1000
 city <- seg_pattern(
-  N = 20000L,
+  N = 5000L,
   side = side,
   cycles = 1,
   center.locations = 2,
@@ -77,7 +77,7 @@ Passing
 all the bandwidths in one call lets the engine reuse its neighbor search.
 
 ```{r micro-indices}
-bands <- c(10, 50, seq(100, 500, by = 50))
+bands <- c(10, 50, seq(100, 1000, by = 50))
 system.time(
   result <- seg_measure(
     city,
@@ -85,7 +85,7 @@ system.time(
     coords = c("x", "y"),
     bands = bands,
     neighbors = "radius",
-    search = "brute",
+    search = "boost",
     measures = "all",
     weighting = "unweighted",
     scope = "both",

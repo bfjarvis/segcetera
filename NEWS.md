@@ -1,4 +1,4 @@
-# segcetera (development version)
+# segcetera 0.9-1
 
 - Brute-force radius searches filter candidates by squared distance before
   calculating square roots, preserving inclusive radii.
