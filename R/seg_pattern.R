@@ -1,13 +1,14 @@
 #' Generate a synthetic segregation pattern
 #'
 #' Simulates agents with lognormal resources and associated status and group
-#' labels, along with an equal number of candidate residential locations.
+#' labels, along with candidate residential locations.
 #' Agents and locations are matched one-to-one by rank score.
 #'
 #' @param N Positive integer number of agents and retained locations.
 #' @param side Positive side length of the square, centered at the origin.
 #' @param cycles Nonnegative number of cosine cycles across each side.
-#' @param center Nonnegative weight favoring locations nearer the center.
+#' @param center Nonnegative default centralization weight for agents and
+#'   locations. Explicit `center.agents` and `center.locations` take precedence.
 #' @param resource.gini Target Gini coefficient of the resource distribution,
 #'   in `[0, 1)`.
 #' @param resource.mean Positive mean of the resource distribution.
@@ -22,29 +23,22 @@
 #'   final agent score. Supply any subset of the names `resource`, `status`,
 #'   and `group`. Omitted coefficients retain defaults of 1, 0, and 0,
 #'   respectively. Unnamed entries are ignored.
-#' @param center positive number indicating how much locations and groups
-#'   should be centralized. Overrides separate agent and location centers.
-#' @param center.locations positive number indicating how much locations
-#'   should be centralized.
-#' @param center.agents positive number indicating how much particular groups
-#'   should be centralized.
-#' @param pow positive number indicating how deep the valleys
-#'   are in the periodic structure for agents and locations. Overrides
-#'   `pow.locations` and `pow.agents` arguments.
+#' @param center.locations,center.agents Nonnegative centralization weights for
+#'   locations and agents. `NULL` uses `center`.
+#' @param pow Default power for the periodic location and agent utilities.
+#'   Explicit `pow.locations` and `pow.agents` take precedence.
 #' @param pow.locations positive number indicating how deep the valleys
 #'   are in the periodic structure for creating locations.
 #' @param pow.agents positive number indicating how deep the valleys
 #'   are in the periodic structure when assigning agents to locations.
-#' @param coef.score Numeric weights for the standardized attributes in the
-#'   final agent score. Supply any subset of the names `resource`, `status`,
-#'   and `group`. Omitted coefficients retain defaults of 1, 0, and 0,
-#'   respectively. Unnamed entries are ignored.
+#' @param grid Candidate location pattern: `"square"`, `"hex"`, or `"runif"`
+#'   for a square lattice, hexagonal lattice, or uniformly random points.
 #' @details The mean and Gini are distribution parameters; realized sample
 #'   values vary. Category sizes are rounded to integers by assigning
 #'   remaining agents to categories with the largest fractional remainders.
 #'   All random draws use the caller's RNG stream; use [set.seed()] to
-#'   reproduce a draw. Of `2 * N` uniformly sampled candidate locations, the
-#'   `N` with highest noisy location utility are retained. Their final
+#'   reproduce a draw. A pool of candidate locations is generated using `grid`,
+#'   and the `N` with highest noisy location utility are retained. Their final
 #'   scores rank utility without the selection noise.
 #' @return A data frame with one row per retained location and its assigned
 #'   agent: `point_id`, `x`, `y`, `score`, `resource`, `status` (an ordered
@@ -123,6 +117,8 @@ seg_pattern <- function(
     side = side,
     cycles = cycles,
     center = center,
+    center.locations = center.locations,
+    center.agents = center.agents,
     resource.gini = resource.gini,
     resource.mean = resource.mean,
     noise.agents = noise.agents,
@@ -241,6 +237,7 @@ seg_pattern <- function(
       c(-side / 2, -side / 2),
       c(side / 2, -side / 2),
       c(side / 2, side / 2),
+      c(-side / 2, side / 2),
       c(-side / 2, -side / 2)
     ))))
     if (grid == 'hex') {
@@ -259,6 +256,10 @@ seg_pattern <- function(
     }
     locations <- as.data.frame(locations)
     names(locations) <- c("x", "y")
+    locations <- locations[
+      abs(locations$x) <= side / 2 & abs(locations$y) <= side / 2,
+      , drop = FALSE
+    ]
   }
   locations$point_id <- seq_len(nrow(locations))
 
@@ -282,5 +283,5 @@ seg_pattern <- function(
   locations$resource <- resource[agent]
   locations$status <- status[agent]
   locations$group <- group[agent]
-  locations
+  locations[c("point_id", "x", "y", "score", "resource", "status", "group")]
 }

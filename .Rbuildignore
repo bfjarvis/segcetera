@@ -7,3 +7,6 @@
 ^AGENTS\.md$
 ^project$
 ^figure$
+^.*\.code-workspace$
+^vignettes/.*_files$
+^vignettes/bruteseg\.R$

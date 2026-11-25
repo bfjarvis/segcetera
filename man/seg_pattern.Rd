@@ -8,14 +8,20 @@ seg_pattern(
   N = 1000L,
   side = 1L,
   cycles = 1,
-  center = 1,
   resource.gini = 0.5,
   resource.mean = 10,
   status = c(low = 1, middle = 1, upper = 1),
   group = c(B = 1, A = 1),
   noise.agents = 1,
   noise.location = 1,
-  coef.score = NULL
+  center = 1,
+  center.locations = NULL,
+  center.agents = NULL,
+  pow = 2,
+  pow.locations = NULL,
+  pow.agents = NULL,
+  coef.score = NULL,
+  grid = c("square", "hex", "runif")
 )
 }
 \arguments{
@@ -24,8 +30,6 @@ seg_pattern(
 \item{side}{Positive side length of the square, centered at the origin.}
 
 \item{cycles}{Nonnegative number of cosine cycles across each side.}
-
-\item{center}{Nonnegative weight favoring locations nearer the center.}
 
 \item{resource.gini}{Target Gini coefficient of the resource distribution,
 in `[0, 1)`.}
@@ -42,10 +46,28 @@ scores used to assign status, group, and the final agent rank.}
 \item{noise.location}{Nonnegative standard deviation of noise added when
 selecting which candidate locations to retain.}
 
+\item{center}{Nonnegative default centralization weight for agents and
+locations. Explicit `center.agents` and `center.locations` take precedence.}
+
+\item{center.locations, center.agents}{Nonnegative centralization weights for
+locations and agents. `NULL` uses `center`.}
+
+\item{pow}{Default power for the periodic location and agent utilities.
+Explicit `pow.locations` and `pow.agents` take precedence.}
+
+\item{pow.locations}{positive number indicating how deep the valleys
+are in the periodic structure for creating locations.}
+
+\item{pow.agents}{positive number indicating how deep the valleys
+are in the periodic structure when assigning agents to locations.}
+
 \item{coef.score}{Numeric weights for the standardized attributes in the
 final agent score. Supply any subset of the names `resource`, `status`,
 and `group`. Omitted coefficients retain defaults of 1, 0, and 0,
 respectively. Unnamed entries are ignored.}
+
+\item{grid}{Candidate location pattern: `"square"`, `"hex"`, or `"runif"`
+for a square lattice, hexagonal lattice, or uniformly random points.}
 }
 \value{
 A data frame with one row per retained location and its assigned
@@ -55,7 +77,7 @@ A data frame with one row per retained location and its assigned
 }
 \description{
 Simulates agents with lognormal resources and associated status and group
-labels, along with an equal number of candidate residential locations.
+labels, along with candidate residential locations.
 Agents and locations are matched one-to-one by rank score.
 }
 \details{
@@ -63,8 +85,8 @@ The mean and Gini are distribution parameters; realized sample
   values vary. Category sizes are rounded to integers by assigning
   remaining agents to categories with the largest fractional remainders.
   All random draws use the caller's RNG stream; use [set.seed()] to
-  reproduce a draw. Of `2 * N` uniformly sampled candidate locations, the
-  `N` with highest noisy location utility are retained. Their final
+  reproduce a draw. A pool of candidate locations is generated using `grid`,
+  and the `N` with highest noisy location utility are retained. Their final
   scores rank utility without the selection noise.
 }
 \examples{

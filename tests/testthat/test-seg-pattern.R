@@ -51,3 +51,15 @@ test_that("score coefficients override named defaults only", {
   expect_error(run(coef.score = c(group = "1")), "numeric vector")
   expect_error(run(coef.score = setNames(1, NA_character_)), "must not be NA")
 })
+
+test_that("location patterns preserve their documented output and validate centers", {
+  columns <- c("point_id", "x", "y", "score", "resource", "status", "group")
+  for (grid in c("square", "hex", "runif")) {
+    pattern <- withr::with_seed(42, seg_pattern(N = 20, grid = grid))
+    expect_named(pattern, columns)
+    expect_equal(nrow(pattern), 20)
+    expect_true(all(abs(pattern$x) <= 0.5 & abs(pattern$y) <= 0.5))
+  }
+  expect_error(seg_pattern(center.locations = -1), "center.locations")
+  expect_error(seg_pattern(center.agents = NA_real_), "center.agents")
+})

@@ -1,5 +1,12 @@
 # segcetera 0.9-1
 
+- Updated `seg_pattern()` help for its grid and utility arguments, validated
+  separate centralization settings, restored the documented column order, and
+  kept generated lattice points within the specified square domain.
+  Repaired the getting-started examples and reduced their demonstration size
+  for package checks. Declared the Rcpp runtime import explicitly and excluded
+  editor files and scratch vignette artifacts from source builds.
+
 - Brute-force radius searches filter candidates by squared distance before
   calculating square roots, preserving inclusive radii.
 

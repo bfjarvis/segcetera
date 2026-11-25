@@ -33,13 +33,13 @@ library(tidyr)
 library(ggplot2)
 ```
 
-I use `seg_pattern()` to generate one city with 3,000 people in a square. Each person belongs to group A or B. The simulated records also contain status and resources, but I ignore these for now. The `group` argument below specified the labels for the groups and their relative sizes. When the elements of the vector are the same, then the groups will be of equal sizes.
+I use `seg_pattern()` to generate one city with 1,500 people in a square. Each person belongs to group A or B. The simulated records also contain status and resources, but I ignore these for now. The `group` argument below specifies the labels for the groups and their relative sizes. When the elements of the vector are the same, then the groups will be of equal sizes.
 
 ```{r simulate-pattern}
 set.seed(2026)
 side <- 1000
 city <- seg_pattern(
-  N = 5000L,
+  N = 1500L,
   side = side,
   cycles = 1,
   center.locations = 2,
@@ -49,7 +49,8 @@ city <- seg_pattern(
   noise.agents = 0.1,
   noise.location = 2,
   grid = 'hex'
-)
+) |>
+  rename(resources = resource)
 ```
 
 ```{r group-pattern, echo=FALSE}
@@ -65,12 +66,10 @@ city |>
 
 ## Individual-level data
 
-The main workhorse of the `segcetera` package is `seg_measure`. This is the function that prepares the data for and then calls the compiled computational engine. 
-We can pass the microdata directly to `seg_measure()`. A column name supplied as the `variables` argument is shorthand for a categorical variable. While `sf` objects can be used to implicitly define the geometry, and hence the relative positions of groups in space, the user can also explicitly identify coordinate columns when working with plain data frames, in this case by specifying `coords=c("x","y")`. 
+The main workhorse of the `segcetera` package is `seg_measure`. This is the function that prepares the data for and then calls the compiled computational engine.
+We can pass the microdata directly to `seg_measure()`. A column name supplied as the `variables` argument is shorthand for a categorical variable. While `sf` objects can be used to implicitly define the geometry, and hence the relative positions of groups in space, the user can also explicitly identify coordinate columns when working with plain data frames, in this case by specifying `coords=c("x","y")`.
 
-The work
-
-The user can, and should, specify multiple bandwidths when performing segregation and local environment calculations using the `seg_measure` function. 
+The user can, and should, specify multiple bandwidths when performing segregation and local environment calculations using the `seg_measure` function.
 
 
 Passing
@@ -121,7 +120,7 @@ result |>
 ```
 
 Because I requested `output = "full"`, I can use `st_as_sf()` to recover
-the local environments. 
+the local environments.
 
 ```{r local-environments}
 localenvs <- st_as_sf(result, bands = c(50, 200, 400, 800))
@@ -191,8 +190,11 @@ voronoi <- tibble(
 ```{r aggregate-group-counts}
 people <- city |>
   st_as_sf(coords = c("x", "y")) |>
-  st_join(voronoi["zone_id"], join = st_within, left = FALSE) |>
+  st_join(voronoi["zone_id"], join = st_covered_by, left = FALSE) |>
   st_drop_geometry()
+
+nrow(people) == nrow(city)
+table(people$group) == table(city$group)
 
 group_cols <- paste0("group_", levels(city$group))
 group_counts <- people |>
@@ -295,7 +297,7 @@ I plot the share of group B before and after smoothing.
 
 ```{r localenv-grid}
 bind_rows(
-  grid = v,
+  grid = st_as_sf(result_grid, what = "env", bands = 0),
   pycno = st_as_sf(result_pycno, what = "env", bands = 0),
   .id = "raster"
 ) |>
@@ -462,10 +464,10 @@ of cycles and the noise in the agent scores, holding the remaining settings
 fixed. I reset the seed so the cases start with the same random draws.
 
 ```{r simulate-comparison-patterns}
-scenarios <- crossing(cycles = c(2, 3), noise.agents = c(1, 1.5))
+scenarios <- crossing(cycles = c(1, 3), noise.agents = c(0.1, 1.5))
 patterns <- Map(
   function(cycles, noise.agents) {
-    if (cycles == 2 && noise.agents == 1) {
+    if (cycles == 1 && noise.agents == 0.1) {
       return(city)
     }
     set.seed(2026)
@@ -473,9 +475,13 @@ patterns <- Map(
       N = nrow(city),
       side = side,
       cycles = cycles,
-      group = c(C = 1, B = 1, A = 1),
+      center.locations = 2,
+      center.agents = 0,
+      pow = 1,
+      group = c(B = 1, A = 1),
       noise.agents = noise.agents,
-      noise.location = 1.5
+      noise.location = 2,
+      grid = "hex"
     ) |>
       rename(resources = resource)
   },
