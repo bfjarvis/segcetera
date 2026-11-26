@@ -71,9 +71,34 @@
 #'   the search radius when `neighbors = "radius"`.
 #' @param neighbors Neighborhood strategy. "radius" uses distance
 #'   bandwidths. "knn" uses count-based adaptive neighborhoods.
-#' @param search Neighbor-search backend. "boost" uses the exact
+#' @param search Neighbor-search backend. The default, "auto", selects "grid"
+#'   for regular axis-aligned lattices, "brute" for other Euclidean radius
+#'   searches, and "boost" for other Euclidean kNN searches and all network
+#'   searches. Automatic lattice detection requires at least one observation per
+#'   16 bounding-grid cells on average; explicit `grid_size` also identifies
+#'   known sparse grids. Grid/pycnophylactic surfaces use "grid" automatically.
+#'   "boost" can be faster for narrow radius neighborhoods; choose an explicit
+#'   backend to compare timings for your application. "boost" uses the exact
 #'   Boost.Geometry R-tree or Boost.Graph traversal. "brute" computes Euclidean
-#'   distances directly and is mainly useful for validation.
+#'   distances directly. "grid" reuses distance-ordered offsets on an
+#'   axis-aligned square or rectangular lattice. Missing cells contribute zero;
+#'   repeated observations at a cell remain separate. The backend precomputes
+#'   radius weights across locations; kNN retains population-based selection,
+#'   proportional distance ties, and locally adaptive weighting. Boundaries are
+#'   finite, with offsets outside the input grid skipped. Results are returned
+#'   only for supplied focal rows. The offset and weight cache is limited to
+#'   512 MiB; use smaller/fewer bands or another backend if
+#'   the cache would exceed this budget. Sparse grids can favor "boost".
+#'   The reusable-offset approach follows EquiPop (Osth, 2014).
+#' @param grid_size Optional positive cell dimensions for `search = "auto"` or
+#'   `search = "grid"`:
+#'   one value for square spacing, or `c(x_spacing, y_spacing)` for rectangular
+#'   spacing. Raw inputs default to the smallest positive coordinate gap on each
+#'   axis; specify the known spacing for grids with gaps or large coordinate
+#'   offsets. Single-row/column grids use the available axis spacing, and one
+#'   unique location defaults to unit spacing. Constructed surfaces supply their
+#'   own cell dimensions. Alignment permits floating-point roundoff; arbitrary
+#'   points are never silently gridded. Distances use the validated cell spacing.
 #' @param surface Population surface used before local environments are
 #'   calculated. "raw" uses the input support directly. "grid"
 #'   redistributes areal counts over a square grid. "pycno" applies
@@ -147,7 +172,8 @@
 #' @param network Optional [seg_network()] specification. If omitted,
 #'   neighborhoods use Euclidean distances. Supplying a network uses shortest
 #'   paths exclusively, regardless of any geometry. Network calculations require
-#'   explicit `bands`, `search = "boost"`, and `surface = "raw"`. Radius bands
+#'   explicit `bands` and `surface = "raw"`; `search = "auto"` selects boost,
+#'   which can also be chosen explicitly. Radius bands
 #'   are in hops or cost units; kNN bands remain variable-specific populations.
 #'   Unreachable population does not count toward kNN; an unattainable target
 #'   raises an error identifying the variable and focal observation. The global
@@ -189,6 +215,14 @@
 #' These descriptive profiles are neither P matrices nor segregation indices.
 #'
 #' @references
+#' Osth, J. (2014) Introducing the EquiPop software: an application for the
+#'   calculation of k-nearest neighbour contexts/neighbourhoods. Uppsala University.
+#'   \url{https://www.uu.se/en/department/human-geography/research/equipop}
+#'
+#' Osth, J., Clark, W. A. V., and Malmberg, B. (2015) Measuring the scale of
+#'   segregation using k-nearest neighbor aggregates. *Geographical Analysis*,
+#'   **47**, 34-49. \doi{10.1111/gean.12053}
+#'
 #' Reardon, S. F. and O'Sullivan, D. (2004) Measures of spatial segregation.
 #'   *Sociological Methodology*, **34**, 121-162.
 #'
@@ -219,6 +253,10 @@
 #'                  bands = 2, output = "localenv")
 #' sf::st_as_sf(gridded)
 #'
+#' # Reuse offsets and radius weights on a regular coordinate grid:
+#' seg_measure(xy, variables, data = seg_data, bands = c(0, 2),
+#'             search = "grid", grid_size = 1)
+#'
 #' @export
 seg_measure <- function(
   x,
@@ -232,7 +270,8 @@ seg_measure <- function(
   power = 3,
   normalize = TRUE,
   neighbors = c("radius", "knn"),
-  search = c("boost", "brute"),
+  search = c("auto", "brute", "boost", "grid"),
+  grid_size = NULL,
   surface = c("raw", "grid", "pycno"),
   surface_audit = FALSE,
   scope = c("both", "overall", "pairwise"),
@@ -276,7 +315,9 @@ seg_measure <- function(
     stop("'variables' must be a uniquely named list of seg_variable specifications",
          call. = FALSE)
   neighbors <- match.arg(neighbors, c("radius", "knn"))
-  search <- match.arg(search, c("boost", "brute"))
+  search <- match.arg(search, c("auto", "brute", "boost", "grid"))
+  if (!is.null(grid_size) && !search %in% c("auto", "grid"))
+    stop("'grid_size' requires search = 'auto' or 'grid'", call. = FALSE)
   weighting <- match.arg(weighting, c("biweight", "unweighted", "inverse", "exponential"))
   surface <- match.arg(surface, c("raw", "grid", "pycno"))
   polygon_points <- match.arg(polygon_points)
@@ -299,6 +340,7 @@ seg_measure <- function(
     stop("'normalize' must be TRUE or FALSE", call. = FALSE)
   prepared_network <- NULL
   if (relational) {
+    if (search == "auto" && is.null(grid_size)) search <- "boost"
     if (search != "boost") stop("Network input requires search = 'boost'", call. = FALSE)
     if (is.null(bands)) stop("Supply explicit 'bands' for network neighborhoods", call. = FALSE)
     prepared_network <- .seg_network_input(x, data, coords, network, node_id)
@@ -355,6 +397,33 @@ seg_measure <- function(
     }
   }
   if (verbose) message("Calculating ", length(compiled), " variables with shared neighborhood searches")
+  grid <- NULL
+  if (search %in% c("auto", "grid")) {
+    if (surface != "raw") {
+      surface_size <- c(surface_info$grid$cell_width, surface_info$grid$cell_height)
+      if (!is.null(grid_size) && !isTRUE(all.equal(rep_len(grid_size, 2L), surface_size)))
+        stop("'grid_size' must match the constructed surface's cell dimensions", call. = FALSE)
+      grid_size <- surface_size
+    }
+    # Unique-axis counts provide a cheap lower bound on bounding-grid cells.
+    # Most arbitrary point sets can bypass lattice validation entirely.
+    candidate_grid <- search == "grid" || !is.null(grid_size) ||
+      as.double(length(unique(checked$coords[, 1]))) *
+        length(unique(checked$coords[, 2])) <= 16 * nrow(checked$coords)
+    if (candidate_grid) {
+      grid <- .seg_grid_layout(checked$coords, grid_size,
+                              strict = search == "grid" || !is.null(grid_size))
+    }
+    if (search == "auto") {
+      # Match the native dense-lookup bound; explicit spacing identifies sparse
+      # lattices whose large bounding rectangle would otherwise favor a tree.
+      if (!is.null(grid) && is.null(grid_size) &&
+          prod(as.double(grid$dimensions)) > 16 * nrow(checked$coords)) grid <- NULL
+      search <- if (!is.null(grid)) "grid" else
+        if (neighbors == "radius") "brute" else "boost"
+    }
+  }
+  if (verbose) message("Using ", search, " neighborhood search")
   compiled <- Map(function(config, spec) {
     config$settings <- list(scope = .seg_or_default(spec$scope, scope),
       output = .seg_or_default(spec$output, output),
@@ -373,8 +442,8 @@ seg_measure <- function(
                                             "inverse", "exponential")) - 1L,
                          normalize,
                          match(neighbors, c("radius", "knn")) - 1L,
-                         match(search, c("boost", "brute")) - 1L,
-                         if (relational) prepared_network$graph else list())
+                         match(search, c("boost", "brute", "grid")) - 1L,
+                         if (relational) prepared_network$graph else list(), grid)
   analyses <- Map(.seg_prepare_result, engine$analyses, compiled,
                   MoreArgs = list(bands = bands))
   result <- list(analyses = analyses, bands = as.numeric(bands),

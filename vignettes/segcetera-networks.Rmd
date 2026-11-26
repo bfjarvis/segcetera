@@ -111,7 +111,8 @@ contribute equally. Population KNN also selects its target before applying
 the kernel, so its effective weighted population may be smaller.
 
 Network bands must be explicit; there is no implicit conversion from Euclidean
-default bands. Network calculations require `surface="raw"` and `search="boost"`.
+default bands. Network calculations require `surface="raw"`; automatic search
+selects boost. Explicit `search="boost"` is also supported.
 
 ## Variable-specific population KNN
 

@@ -16,7 +16,8 @@ seg_measure(
   power = 3,
   normalize = TRUE,
   neighbors = c("radius", "knn"),
-  search = c("boost", "brute"),
+  search = c("auto", "brute", "boost", "grid"),
+  grid_size = NULL,
   surface = c("raw", "grid", "pycno"),
   surface_audit = FALSE,
   scope = c("both", "overall", "pairwise"),
@@ -96,9 +97,35 @@ the search radius when `neighbors = "radius"`.}
 \item{neighbors}{Neighborhood strategy. "radius" uses distance
 bandwidths. "knn" uses count-based adaptive neighborhoods.}
 
-\item{search}{Neighbor-search backend. "boost" uses the exact
+\item{search}{Neighbor-search backend. The default, "auto", selects "grid"
+for regular axis-aligned lattices, "brute" for other Euclidean radius
+searches, and "boost" for other Euclidean kNN searches and all network
+searches. Automatic lattice detection requires at least one observation per
+16 bounding-grid cells on average; explicit `grid_size` also identifies
+known sparse grids. Grid/pycnophylactic surfaces use "grid" automatically.
+"boost" can be faster for narrow radius neighborhoods; choose an explicit
+backend to compare timings for your application. "boost" uses the exact
 Boost.Geometry R-tree or Boost.Graph traversal. "brute" computes Euclidean
-distances directly and is mainly useful for validation.}
+distances directly. "grid" reuses distance-ordered offsets on an
+axis-aligned square or rectangular lattice. Missing cells contribute zero;
+repeated observations at a cell remain separate. The backend precomputes
+radius weights across locations; kNN retains population-based selection,
+proportional distance ties, and locally adaptive weighting. Boundaries are
+finite, with offsets outside the input grid skipped. Results are returned
+only for supplied focal rows. The offset and weight cache is limited to
+512 MiB; use smaller/fewer bands or another backend if
+the cache would exceed this budget. Sparse grids can favor "boost".
+The reusable-offset approach follows EquiPop (Osth, 2014).}
+
+\item{grid_size}{Optional positive cell dimensions for `search = "auto"` or
+`search = "grid"`:
+one value for square spacing, or `c(x_spacing, y_spacing)` for rectangular
+spacing. Raw inputs default to the smallest positive coordinate gap on each
+axis; specify the known spacing for grids with gaps or large coordinate
+offsets. Single-row/column grids use the available axis spacing, and one
+unique location defaults to unit spacing. Constructed surfaces supply their
+own cell dimensions. Alignment permits floating-point roundoff; arbitrary
+points are never silently gridded. Distances use the validated cell spacing.}
 
 \item{surface}{Population surface used before local environments are
 calculated. "raw" uses the input support directly. "grid"
@@ -155,7 +182,8 @@ Both retention options can be overridden per variable, including by `FALSE`.}
 \item{network}{Optional [seg_network()] specification. If omitted,
 neighborhoods use Euclidean distances. Supplying a network uses shortest
 paths exclusively, regardless of any geometry. Network calculations require
-explicit `bands`, `search = "boost"`, and `surface = "raw"`. Radius bands
+explicit `bands` and `surface = "raw"`; `search = "auto"` selects boost,
+which can also be chosen explicitly. Radius bands
 are in hops or cost units; kNN bands remain variable-specific populations.
 Unreachable population does not count toward kNN; an unattainable target
 raises an error identifying the variable and focal observation. The global
@@ -264,8 +292,20 @@ gridded <- seg_measure(blocks, variables, surface = "grid", nrow = 10, ncol = 10
                  bands = 2, output = "localenv")
 sf::st_as_sf(gridded)
 
+# Reuse offsets and radius weights on a regular coordinate grid:
+seg_measure(xy, variables, data = seg_data, bands = c(0, 2),
+            search = "grid", grid_size = 1)
+
 }
 \references{
+Osth, J. (2014) Introducing the EquiPop software: an application for the
+  calculation of k-nearest neighbour contexts/neighbourhoods. Uppsala University.
+  \url{https://www.uu.se/en/department/human-geography/research/equipop}
+
+Osth, J., Clark, W. A. V., and Malmberg, B. (2015) Measuring the scale of
+  segregation using k-nearest neighbor aggregates. *Geographical Analysis*,
+  **47**, 34-49. \doi{10.1111/gean.12053}
+
 Reardon, S. F. and O'Sullivan, D. (2004) Measures of spatial segregation.
   *Sociological Methodology*, **34**, 121-162.
 

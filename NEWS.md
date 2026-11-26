@@ -1,3 +1,16 @@
+# segcetera (development version)
+
+- Default distance bands now use quantiles 0.01, 0.025, 0.05, 0.1, 0.15, 0.2,
+  0.25, 0.3, 0.4, and 0.5 of sampled positive pairwise distances.
+- Default `search = "auto"` uses grid offsets for regular lattices, brute force
+  for other Euclidean radius neighborhoods, and boost for other kNN and network
+  neighborhoods. Explicit backends remain available, including boost for narrow
+  radius searches. Results report the selected backend in `neighbors$engine`.
+- Added `search = "grid"` for square and rectangular lattices, with optional
+  `grid_size` for explicit spacing. Reuses offset ordering and radius weights
+  across focal locations, supports population-based kNN and repeated locations,
+  and uses the cell dimensions of grid/pycnophylactic surfaces automatically.
+
 # segcetera 0.9-1
 
 - Updated `seg_pattern()` help for its grid and utility arguments, validated

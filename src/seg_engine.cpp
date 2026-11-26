@@ -9,6 +9,7 @@
 #include "seg_neighbors.h"
 #include "seg_euclidean.h"
 #include "seg_graph.h"
+#include "seg_grid.h"
 #include "seg_scores.h"
 
 using namespace Rcpp;
@@ -606,7 +607,7 @@ struct VariableAnalysis {
 // [[Rcpp::export(name = ".seg_engine_cpp", rng = false)]]
 List seg_engine_cpp(NumericMatrix coords, List variables,
     NumericVector bands, double power, int weighting, bool normalize,
-    int neighbors, int search, List network)
+    int neighbors, int search, List network, Nullable<List> grid = R_NilValue)
 {
   const int n=as<NumericVector>(as<List>(variables[0])["mass"]).size(), B=bands.size();
   arma::vec X(coords.begin(),coords.nrow(),false), Y(coords.begin()+coords.nrow(),coords.nrow(),false);
@@ -615,7 +616,7 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
   std::unique_ptr<EuclideanSearch> euclidean;
   std::unique_ptr<GraphSearch> graph;
   if(relational) graph.reset(new GraphSearch(network));
-  else euclidean.reset(new EuclideanSearch(X,Y,search==Indexed));
+  else if (search != Grid) euclidean.reset(new EuclideanSearch(X,Y,search==Indexed));
   const CharacterVector names=variables.names();
   std::vector<std::unique_ptr<VariableAnalysis>> models;
   for(int v=0;v<variables.size();++v) {
@@ -629,6 +630,12 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
   const bool knn = neighbors==PopulationNearest;
   const bool reuse_radius_weights = !knn && B > 1 &&
     (weighting == Unweighted || (!normalize && weighting != Inverse));
+  std::unique_ptr<GridSearch> grid_search;
+  if (search == Grid) {
+    if (grid.isNull()) stop("Grid search requires a prepared grid layout");
+    grid_search.reset(new GridSearch(List(grid.get()), X, Y, bands, power,
+      weighting, normalize, knn, reuse_radius_weights));
+  }
   std::vector<int> band_order(B);
   std::iota(band_order.begin(), band_order.end(), 0);
   if (reuse_radius_weights)
@@ -661,6 +668,7 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
   for(int i=0;i<n;++i) {
     if(i%256==0) checkUserInterrupt();
     const auto candidates=relational ? graph->find(i,largest,knn,eligible) :
+                         grid_search ? grid_search->find(i,largest,knn,eligible) :
                                       euclidean->find(i,largest,knn,eligible);
     ++focal_searches;
     if (knn) {
@@ -692,8 +700,10 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
       std::size_t next = 0;
       for (int b : band_order) {
         while (next < candidates.size() && candidates[next].d <= bands[b]) {
-          const auto& nb = candidates[next++];
-          const double weight = seg_weight(nb.d, 1.0, power, weighting);
+          const auto& nb = candidates[next];
+          const double weight = grid_search ? grid_search->fixed_weight(next) :
+            seg_weight(nb.d, 1.0, power, weighting);
+          ++next;
           for (std::size_t v = 0; v < dense.size(); ++v)
             models[dense[v]]->seg_add_neighbor(running_counts[v], nb.id, weight);
           if (!sparse.empty()) {
@@ -714,8 +724,9 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
         if (first != candidates.end()) nearest_positive = first->d;
       }
       for (int b : band_order) {
-        seg_radius_weights(radius_weights, candidates, bands[b], power, weighting,
-                           normalize, nearest_positive);
+        if (grid_search) grid_search->radius_weights(radius_weights, candidates, b, nearest_positive);
+        else seg_radius_weights(radius_weights, candidates, bands[b], power, weighting,
+                                normalize, nearest_positive);
         for (auto& model : models)
           model->seg_process_neighborhood(i, b, radius_weights);
       }
@@ -728,8 +739,9 @@ List seg_engine_cpp(NumericMatrix coords, List variables,
     local_environments += models[v]->local_environment_count;
   }
   out.attr("names")=variables.attr("names");
-  return List::create(_["analyses"]=out,
-    _["diagnostics"]=List::create(_["focal_searches"]=focal_searches,
+  List diagnostics = List::create(_["focal_searches"]=focal_searches,
                                    _["variables"]=variables.size(),
-                                   _["local_environments"]=local_environments));
+                                   _["local_environments"]=local_environments);
+  if (grid_search) diagnostics["grid"] = grid_search->diagnostics();
+  return List::create(_["analyses"]=out, _["diagnostics"]=diagnostics);
 }

@@ -44,9 +44,9 @@ test_that("automatic distance bands use the selected polygon representatives", {
   expect_equal(seg_default_bands(x, probs = .5, polygon_points = "centroid"),
                centroid_distance)
   variables <- list(group = seg_categorical(vars = c("A", "B")))
-  expect_equal(seg_measure(x, variables)$bands, rep(interior_distance, 9))
+  expect_equal(seg_measure(x, variables)$bands, rep(interior_distance, 10))
   expect_equal(seg_measure(x, variables, polygon_points = "centroid")$bands,
-               rep(centroid_distance, 9))
+               rep(centroid_distance, 10))
 })
 
 test_that("point data and gridded surfaces do not change with polygon point selection", {

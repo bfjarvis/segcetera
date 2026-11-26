@@ -11,7 +11,7 @@ enum Measure {
 };
 enum Kernel { Unweighted = 0, Biweight = 1, Inverse = 2, Exponential = 3 };
 enum Neighborhood { Radius = 0, PopulationNearest = 1 };
-enum SearchBackend { Indexed = 0, Brute = 1 };
+enum SearchBackend { Indexed = 0, Brute = 1, Grid = 2 };
 }
 
 #endif

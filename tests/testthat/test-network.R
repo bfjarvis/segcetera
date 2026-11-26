@@ -188,6 +188,7 @@ test_that("geometry is optional and never determines network distances", {
   expect_null(small$node_id)
   expect_equal(small$network$edges,1)
   expect_equal(small$network$units,"hops")
+  expect_identical(small$neighbors$engine,"boost")
 })
 
 test_that("network inputs reject invalid or ambiguous specifications", {

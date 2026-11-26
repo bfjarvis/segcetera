@@ -28,8 +28,16 @@ test_that("band sampling does not create RNG state when none exists", {
     if(!is.null(before)) rm(".Random.seed",envir=.GlobalEnv)
     bands <- seg_default_bands(cbind(x=1:600,y=0),n=20)
     expect_false(exists(".Random.seed",.GlobalEnv,inherits=FALSE))
-    expect_length(bands,9)
+    expect_length(bands,10)
   })()
+})
+
+test_that("default distance quantiles emphasize shorter bands through the median", {
+  xy <- cbind(x = 0:9, y = 0)
+  probs <- c(0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5)
+  expected <- as.numeric(stats::quantile(as.numeric(stats::dist(xy)),
+                                        probs = probs, type = 8, names = FALSE))
+  expect_identical(seg_default_bands(xy), expected)
 })
 
 test_that("default bands validate geometry, sampling, and population inputs", {

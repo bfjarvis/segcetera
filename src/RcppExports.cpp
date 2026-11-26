@@ -12,8 +12,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // seg_engine_cpp
-List seg_engine_cpp(NumericMatrix coords, List variables, NumericVector bands, double power, int weighting, bool normalize, int neighbors, int search, List network);
-RcppExport SEXP _segcetera_seg_engine_cpp(SEXP coordsSEXP, SEXP variablesSEXP, SEXP bandsSEXP, SEXP powerSEXP, SEXP weightingSEXP, SEXP normalizeSEXP, SEXP neighborsSEXP, SEXP searchSEXP, SEXP networkSEXP) {
+List seg_engine_cpp(NumericMatrix coords, List variables, NumericVector bands, double power, int weighting, bool normalize, int neighbors, int search, List network, Nullable<List> grid);
+RcppExport SEXP _segcetera_seg_engine_cpp(SEXP coordsSEXP, SEXP variablesSEXP, SEXP bandsSEXP, SEXP powerSEXP, SEXP weightingSEXP, SEXP normalizeSEXP, SEXP neighborsSEXP, SEXP searchSEXP, SEXP networkSEXP, SEXP gridSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::traits::input_parameter< NumericMatrix >::type coords(coordsSEXP);
@@ -25,7 +25,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type neighbors(neighborsSEXP);
     Rcpp::traits::input_parameter< int >::type search(searchSEXP);
     Rcpp::traits::input_parameter< List >::type network(networkSEXP);
-    rcpp_result_gen = Rcpp::wrap(seg_engine_cpp(coords, variables, bands, power, weighting, normalize, neighbors, search, network));
+    Rcpp::traits::input_parameter< Nullable<List> >::type grid(gridSEXP);
+    rcpp_result_gen = Rcpp::wrap(seg_engine_cpp(coords, variables, bands, power, weighting, normalize, neighbors, search, network, grid));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -47,7 +48,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_segcetera_seg_engine_cpp", (DL_FUNC) &_segcetera_seg_engine_cpp, 9},
+    {"_segcetera_seg_engine_cpp", (DL_FUNC) &_segcetera_seg_engine_cpp, 10},
     {"_segcetera_seg_pycno_cpp", (DL_FUNC) &_segcetera_seg_pycno_cpp, 6},
     {NULL, NULL, 0}
 };

@@ -86,7 +86,7 @@ ggplot(auck) +
 
 # Calculate local environments and segregation indices.
 
-`seg_measure()` produces both local environment data for specified bands as well as segregation indices based on those local environments. You can return the environments, the indices, or both. Here we specify `output='full'` to get both the indices and the local environments back. `search='boost'`, `neighbors='radius'`, and `measures='all'` are specified explicitly as well, but these are also the defaults.
+`seg_measure()` produces both local environment data for specified bands as well as segregation indices based on those local environments. You can return the environments, the indices, or both. Here we specify `output='full'` to get both the indices and the local environments back. We explicitly select `search='boost'`; automatic search uses brute force for irregular radius inputs. `neighbors='radius'` and `measures='all'` are the defaults.
 
 ```{r first-run}
 variables <- list(ethnicity = seg_categorical(vars = c("Korean", "Non_Korean")))

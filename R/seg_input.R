@@ -1,6 +1,51 @@
 # Resolve optional values without evaluating the fallback unless needed.
 .seg_or_default <- function(x, default) if (is.null(x)) default else x
 
+# Validates one rectangular lattice for seg_measure() and supplies integer cell
+# addresses to the native offset backend. Missing cells retain zero population.
+# Non-strict calls return NULL for other layouts during automatic selection.
+.seg_grid_layout <- function(coords, size = NULL, strict = TRUE) {
+  if (!is.null(size) && (!is.numeric(size) || !length(size) ||
+      length(size) > 2L || any(!is.finite(size) | size <= 0))) {
+    stop("'grid_size' must contain one or two positive finite cell dimensions",
+         call. = FALSE)
+  }
+  if (is.null(size)) {
+    size <- vapply(seq_len(2), function(j) {
+      values <- sort(unique(coords[, j]))
+      gaps <- diff(values)
+      if (!length(gaps)) return(NA_real_)
+      # Refine the smallest gap over the full span to avoid cumulative roundoff.
+      span <- values[length(values)] - values[1]
+      span / round(span / min(gaps))
+    }, numeric(1))
+    size[is.na(size)] <- if (all(is.na(size))) 1 else size[!is.na(size)][1]
+  } else size <- rep_len(as.numeric(size), 2L)
+  origin <- apply(coords, 2, min)
+  indices <- matrix(0L, nrow(coords), 2L)
+  for (j in seq_len(2)) {
+    position <- (coords[, j] - origin[j]) / size[j]
+    index <- round(position)
+    tolerance <- 8 * .Machine$double.eps *
+      pmax(abs(coords[, j]), abs(origin[j]), size[j])
+    if (any(!is.finite(index)) || any(index > .Machine$integer.max - 1) ||
+        any(abs(coords[, j] - (origin[j] + index * size[j])) > tolerance)) {
+      if (!strict) return(NULL)
+      stop("search = 'grid' requires an axis-aligned rectangular lattice; ",
+           "supply its cell dimensions with 'grid_size', or use 'boost'/'brute'",
+           call. = FALSE)
+    }
+    if (length(unique(index)) != length(unique(coords[, j]))) {
+      if (!strict) return(NULL)
+      stop("Distinct coordinates map to the same grid cell; use 'boost' or 'brute'",
+           call. = FALSE)
+    }
+    indices[, j] <- as.integer(index)
+  }
+  list(col = indices[, 1], row = indices[, 2], size = size,
+       dimensions = as.integer(apply(indices, 2, max) + 1), origin = origin)
+}
+
 # Shared by seg_measure() and seg_default_bands() to align attributes with one
 # coordinate pair per observation. Also handles optional network coordinates.
 .seg_geometry <- function(x, data, coords, polygon_points = "point_on_surface") {

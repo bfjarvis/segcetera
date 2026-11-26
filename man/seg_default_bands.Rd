@@ -9,7 +9,7 @@ seg_default_bands(
   coords = NULL,
   population = NULL,
   n = 500,
-  probs = c(0.01, 0.05, seq(0.1, 0.7, 0.1)),
+  probs = c(0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5),
   polygon_points = c("point_on_surface", "centroid")
 )
 }
@@ -27,8 +27,8 @@ relevant count totals. At least one weight must be positive.}
 
 \item{n}{Maximum number of support points to sample; an integer of at least 2.}
 
-\item{probs}{Requested distance quantiles, in [0, 1]. The defaults are 0.01,
-0.05, and 0.1 through 0.7 in increments of 0.1.}
+\item{probs}{Requested distance quantiles, in [0, 1]. The defaults are
+`c(0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5)`.}
 
 \item{polygon_points}{Representative polygon locations: `"point_on_surface"`
 (default) or `"centroid"`. See [seg_measure()].}

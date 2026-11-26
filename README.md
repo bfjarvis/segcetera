@@ -15,6 +15,7 @@ segcetera provides:
   plus exposure and isolation summaries.
 - Fixed-distance and population nearest-neighbor neighborhoods, with spatial
   weighting options.
+- Regular-grid searches that reuse offsets and radius weights across locations.
 - Analysis of several variables in one call, sharing neighborhood searches.
 - Local population compositions and income-rank summaries, with tabular and
   spatial outputs for plotting.
@@ -261,6 +262,13 @@ pycnophylactic smoothing, preserving source-zone category totals through
 rescaling. See the [surface guide](vignettes/segcetera-surface-construction.Rmd) for
 resolution choices and count-conservation audits.
 
+Search defaults to `"auto"`: grid offsets for regular lattices and constructed
+grid surfaces, brute force for other radius searches, and boost for other kNN
+or network searches. The chosen backend is recorded in `result$neighbors$engine`.
+Boost can be faster for narrow radius neighborhoods; explicit `search = "boost"`
+or `search = "brute"` lets you compare timings for your data. Known sparse
+lattices can use explicit `search = "grid"` or specify their `grid_size`.
+
 ## Network neighborhoods
 
 Supply an edge list to define proximity by shortest-path hops or travel costs.
@@ -298,6 +306,8 @@ preparation with `sfnetworks`.
   simulated people to polygon counts and parallel comparisons across patterns.
 - [Multiple variables and methods](vignettes/segcetera-multiple-variables.Rmd): input
   choices, multi-variable workflows, and interpretation.
+- [Grid-offset search](vignettes/segcetera-grid-search.Rmd): reusable neighborhoods
+  and kernel weights for regular rectangular grids.
 - [Technical definitions](vignettes/segcetera-measure-definitions.Rmd): variation
   functions, normalizers, local contributions, and methodological sources.
 - Installed help: `?seg_measure`, `?seg_variables`, and `?seg_result`.

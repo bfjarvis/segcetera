@@ -1,0 +1,124 @@
+---
+title: "Grid search with reusable offsets"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Grid search with reusable offsets}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7, fig.height = 4)
+```
+
+Regular grids have the same relative distances around every focal location.
+The default `search = "auto"` selects grid offsets for sufficiently occupied
+regular lattices and for constructed grid/pycnophylactic surfaces. Other inputs
+use brute force for radius neighborhoods and boost for population-based kNN.
+Explicit `search = "grid"`, `"brute"`, or `"boost"` selects a backend directly.
+
+`search = "grid"` exploits this structure by preparing an ordered set of cell
+offsets once. For radius neighborhoods, it also prepares the spatial weights
+once for each bandwidth. This approach follows the grid-offset principle used
+by [EquiPop](https://www.uu.se/en/department/human-geography/research/equipop)
+(Osth, 2014; Osth, Clark, and Malmberg, 2015,
+[doi:10.1111/gean.12053](https://doi.org/10.1111/gean.12053)).
+
+## Agents on a grid
+
+Each row here represents an agent at a grid location. Group A occupies one side
+of the square and group B the other.
+
+```{r agents}
+library(segcetera)
+library(ggplot2)
+
+agents <- expand.grid(x = 0:9, y = 0:9)
+agents$group <- ifelse(agents$x + agents$y < 9, "A", "B")
+variables <- list(group = seg_categorical("group"))
+
+result <- seg_measure(
+  agents,
+  variables,
+  coords = c("x", "y"),
+  bands = c(0, 2, 4),
+  search = "auto",
+  grid_size = 1,
+  output = "full"
+)
+as.data.frame(result)
+result$neighbors$engine
+```
+
+The cell size is one coordinate unit in both directions. With complete regular
+axes, `grid_size` can also be inferred. Specifying the known spacing is useful
+when cells are absent or coordinates have large offsets, as with projected maps.
+
+```{r local-environments}
+environments <- as.data.frame(result, what = "env")
+environments$x <- agents$x[environments$location]
+environments$y <- agents$y[environments$location]
+
+ggplot(subset(environments, category == "A"), aes(x, y, fill = value)) +
+  geom_tile() +
+  facet_wrap(~band, labeller = label_both) +
+  scale_fill_viridis_c(limits = c(0, 1), name = "Group A\nshare") +
+  coord_equal() +
+  theme_minimal()
+```
+
+Missing cells contribute zero population. Multiple agents can occupy the same
+cell, and remain separate observations in the output. The grid has finite
+boundaries: offsets extending beyond it are skipped. Results are returned for
+the supplied focal rows.
+
+## Comparing searches
+
+The grid backend uses the same neighborhood and index definitions as the
+general-coordinate backends. Here the indices and local environments agree.
+
+```{r compare-backends}
+reference <- seg_measure(
+  agents, variables, coords = c("x", "y"), bands = c(0, 2, 4),
+  search = "brute", output = "full"
+)
+isTRUE(all.equal(result$analyses, reference$analyses, tolerance = 1e-12))
+result$diagnostics$grid
+```
+
+The diagnostics report the grid dimensions and origin, the number of prepared
+offsets, and the number of cached weights. Offsets at equal distances share a
+weight, reducing the cache size. The offset and weight cache has a 512 MiB
+budget. A request exceeding it raises an error; smaller radius bands or a
+different search backend can then be used.
+
+## Rectangular cells and population thresholds
+
+Use two cell dimensions for rectangular spacing. Population-based nearest
+neighborhoods use the same offset ordering, stopping when the requested eligible
+population is reached. Tied boundary populations are included proportionately.
+Their adaptive kernel weights are calculated for each neighborhood.
+
+```{r rectangular-knn}
+rectangular <- transform(agents, x = 2 * x, y = 3 * y)
+nearest <- seg_measure(
+  rectangular,
+  variables,
+  coords = c("x", "y"),
+  neighbors = "knn",
+  bands = c(5, 20),
+  search = "grid",
+  grid_size = c(2, 3)
+)
+as.data.frame(nearest)
+```
+
+For polygon inputs, `surface = "grid"` or `surface = "pycno"` first constructs
+a population surface. Combining either with `search = "grid"` automatically uses
+the generated cell dimensions. `surface` controls the population representation;
+`search` controls how neighborhoods are calculated.
+
+The grid backend is most useful when a reasonably dense regular lattice is
+shared by many focal locations. Sparse grids with many empty positions may
+favor `search = "boost"`. Runtime also depends on the largest neighborhood and
+the variables being analyzed.
