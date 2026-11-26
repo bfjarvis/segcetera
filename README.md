@@ -90,7 +90,8 @@ result <- seg_measure(
 result
 ```
 
-`variables` names the analyses and describes their inputs. Each `vars` argument
+`variables` argument, a user specifies the categories, statuses, resources etc. 
+to be analyzed. Each `vars` argument
 selects one observed-value column or multiple category-count columns.
 `bands` sets the neighborhood radii; the biweight kernel gives
 nearer residents more weight. `measures = "all"` requests the scalar indices and
@@ -327,10 +328,18 @@ fork of [seg](https://github.com/syunhong/seg) by Seong-Yun Hong and David
 O'Sullivan. Attribution for reused code, example data, and other materials is
 retained in the package.
 
+## License
+
+segcetera is distributed under the [GNU General Public License, version 3 or
+later](https://cran.r-project.org/web/licenses/GPL-3), continuing the license of
+the original `seg` package. Third-party components retain their respective
+licenses and notices; see [third-party notices](inst/NOTICE.md) for Boost.
+
 ## AI assistance disclosure
 
 I used ChatGPT Codex, especially GPT-6 and GPT-6.1 Sol, extensively in developing
 this package. Its contributions spanned software design and implementation,
-refactoring, debugging, test development, documentation, examples, performance
-exploration, and visual design. All errors, omissions, and misinterpretations
-remain my responsibility.
+refactoring, debugging, test development, documentation, vignette composition, and
+benchmarking. Tests and worked examples are provided to establish technical 
+validity, but ultimately it is incumbent upon users to assess the package's suitability 
+for their applications and independently check substantive results.

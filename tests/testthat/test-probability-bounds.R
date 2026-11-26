@@ -64,7 +64,8 @@ test_that("the engine corrects roundoff but rejects invalid computed probabiliti
   d <- data.frame(low = c(1, 0), high = c(0, 1))
   spec <- seg_continuous(vars = c("low", "high"), representation = "intervals",
     summary = list(probs = .5))
-  config <- segcetera:::.seg_compile(spec, d, rep(1, 2), "all")
+  spec$measures <- c("exposure", "information", "diversity", "dissimilarity", "square_root")
+  config <- segcetera:::.seg_compile(spec, d, rep(1, 2), counts = as.matrix(d))
   config$settings <- list(scope = "both", output = "localenv",
     keep_scores = FALSE, keep_contributions = FALSE)
   run <- function(allocation) {

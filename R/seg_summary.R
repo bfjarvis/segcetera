@@ -173,3 +173,84 @@
   list(map = as.integer(map), fractions = fractions, labels = group_labels,
        definition = definition)
 }
+# Discrete and continuous reporting share this module; their separate resolvers
+# preserve whole-category ties and interval interpolation respectively.
+
+# Normalizes ordinal summary shorthand for seg_ordinal() through the
+# shared constructor, so compilation receives validated options.
+.seg_localenv_options <- function(options) {
+  if (is.character(options) && length(options) == 1L && !is.na(options))
+    options <- list(type = options)
+  if (!is.list(options) || is.null(names(options)) || anyDuplicated(names(options)) ||
+      any(!names(options) %in% c("type", "probs")) ||
+      !is.character(options$type) || length(options$type) != 1L ||
+      is.na(options$type) || !options$type %in% c("quantiles", "shares"))
+    stop("'localenv' must select 'quantiles' or 'shares', optionally with probs",
+         call. = FALSE)
+  if (options$type == "quantiles") {
+    options$probs <- .seg_or_default(options$probs, seq(.1, .9, .1))
+  }
+  p <- options$probs
+  if (!is.null(p) && (!is.numeric(p) || !length(p) || any(!is.finite(p)) ||
+      any(p < 0 | p > 1) || is.unsorted(p, strictly = TRUE)))
+    stop("Local-environment probabilities must increase strictly within [0, 1]",
+         call. = FALSE)
+  if (options$type == "shares" && !is.null(p) &&
+      (length(p) < 2L || p[1L] != 0 || p[length(p)] != 1))
+    stop("Local share probabilities must increase from 0 to 1", call. = FALSE)
+  options
+}
+
+# Builds discrete local-environment settings for seg_measure(), keeping reporting
+# groups separate from the categories used for indices and exposure.
+.seg_localenv <- function(spec, labels, totals) {
+  options <- spec$localenv
+  if (options$type == "quantiles") {
+    statistics <- data.frame(
+      statistic = "quantile_rank", prob = options$probs,
+      label = paste0("q", format(options$probs, trim = TRUE))
+    )
+    return(list(type = 1L, probs = as.numeric(options$probs), map = integer(),
+      definition = list(type = "quantiles", probs = options$probs,
+        labels = statistics$label, statistics = statistics,
+        scale = "global_rank", method = "inverse_midrank_cdf")))
+  }
+  if (!is.null(options$probs)) {
+    groups <- .seg_rank_groups(seq_along(labels), totals,
+                                 list(probs = options$probs))
+    definition <- c(list(type = "shares"), groups$definition)
+    map <- groups$map
+  } else {
+    definition <- list(type = "shares", labels = labels, method = "supplied_categories")
+    map <- seq_along(labels) - 1L
+  }
+  list(type = 0L, probs = numeric(), map = as.integer(map), definition = definition)
+}
+
+# Shared by seg_measure()'s ordinal and exact continuous reporting paths to group
+# ordered values without splitting ties. Takes validated probabilities
+# spanning [0, 1] or breaks padded to cover the observed values.
+.seg_rank_groups <- function(scores, totals, options) {
+  present <- totals > 0
+  v <- scores[present]
+  mass <- totals[present]
+  if (!length(v)) return(list(map = rep(-1L, length(scores)), labels = character(),
+                              definition = list(requested = options)))
+  if (!is.null(options$probs)) {
+    p <- options$probs
+    cumulative <- cumsum(mass) / sum(mass)
+    inner <- v[vapply(p[-c(1L, length(p))],
+                       function(q) which(cumulative >= q - 8*.Machine$double.eps)[1L], integer(1))]
+    breaks <- c(-Inf, unique(inner[inner < max(v)]), Inf)
+  } else {
+    breaks <- options$breaks
+  }
+  groups <- cut(scores, breaks, include.lowest = TRUE, right = TRUE)
+  original <- as.integer(groups)
+  shares <- vapply(seq_len(length(breaks) - 1L),
+                   function(k) sum(totals[which(original == k)]), numeric(1))
+  keep <- which(shares > 0)
+  list(map = match(original, keep) - 1L, labels = levels(groups)[keep],
+       definition = list(requested = options, breaks = breaks, right = TRUE,
+                         labels = levels(groups)[keep], shares = shares[keep] / sum(shares)))
+}

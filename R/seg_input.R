@@ -83,25 +83,6 @@
   list(coords = xy, data = source, geometry = geometry, crs = crs)
 }
 
-# Resolves the common population for seg_measure() radius analyses. When no weights
-# are supplied, infer them from variable counts or weights that agree by row.
-.seg_population <- function(population, variables, data, count_data) {
-  n <- nrow(data)
-  if (!is.null(population)) return(.seg_mass(population, data, n))
-  candidates <- Map(function(spec, counts) {
-    if (!is.null(counts)) rowSums(counts) else
-      if (!is.null(spec$weights)) .seg_mass(spec$weights, data, n) else NULL
-  }, variables, count_data)
-  candidates <- Filter(Negate(is.null), candidates)
-  if (!length(candidates)) return(rep(1, n))
-  first <- candidates[[1L]]
-  if (!all(vapply(candidates, function(z) isTRUE(all.equal(z, first,
-                    check.attributes = FALSE)), logical(1))))
-    stop("Variable populations differ; supply the common neighborhood 'population' explicitly",
-         call. = FALSE)
-  first
-}
-
 # Shared by seg_measure(), seg_default_bands(), and seg_network() to resolve
 # column names or positions consistently while preserving table dimensions.
 .seg_select <- function(data, columns) {
@@ -131,28 +112,6 @@
          call. = FALSE)
   }
   as.numeric(value)
-}
-
-# Prepares one population's statistical inputs for seg_measure(). Case calls
-# align spatial support afterward, preserving case-specific regional references.
-.seg_compile_input <- function(checked, variables, population, measures,
-                               neighbors, relational) {
-  counts <- lapply(variables, function(spec) {
-    if (!is.null(spec$counts)) .seg_counts(spec, checked$data)
-  })
-  population <- if (neighbors == "knn" || relational) {
-    .seg_mass(population, checked$data, nrow(checked$data))
-  } else .seg_population(population, variables, checked$data, counts)
-  total <- if (neighbors == "radius") sum(population)
-  if (neighbors == "radius" && (!is.finite(total) || total <= 0))
-    stop("The common population total must be positive and finite", call. = FALSE)
-  compiled <- Map(function(spec, name, count) {
-    .seg_compile(spec, checked$data, population, measures, variable = name,
-                 counts = count)
-  }, variables, names(variables), counts)
-  list(checked = checked, variables = variables, population = population,
-       compiled = compiled,
-       surface_info = list(type = "raw", fallback = list(count = 0L), audit = NULL))
 }
 
 # Keeps retention checks consistent between seg_measure() and the three variable

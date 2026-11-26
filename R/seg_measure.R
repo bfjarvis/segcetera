@@ -365,6 +365,21 @@ seg_measure <- function(
     checked <- .seg_geometry(x, data, coords, polygon_points)
   }
   supplied_population <- !is.null(population)
+  # Normalize row-aligned inputs and data-independent options once. Case slices
+  # and surface recompilation reuse these validated values.
+  n <- nrow(checked$data)
+  if (supplied_population) population <- .seg_mass(population, checked$data, n)
+  valid_measures <- c("exposure", "information", "diversity", "dissimilarity", "square_root")
+  variables <- lapply(variables, function(spec) {
+    if (!is.null(spec$weights)) spec$weights <- .seg_mass(spec$weights, checked$data, n)
+    selected <- .seg_or_default(spec$measures, measures)
+    selected[selected %in% c("relative_diversity", "variance_ratio")] <- "diversity"
+    if (!is.character(selected) || !length(selected) || anyNA(selected) ||
+        any(!selected %in% c(valid_measures, "all")))
+      stop("Unknown or empty measure selection", call. = FALSE)
+    spec$measures <- if ("all" %in% selected) valid_measures else unique(selected)
+    spec
+  })
   case_info <- if (!is.null(case)) .seg_case_inputs(checked, case, variables,
     population, if (relational) prepared_network$graph)
   inputs <- if (is.null(case_info)) {
@@ -373,8 +388,8 @@ seg_measure <- function(
   layout <- if (!is.null(case_info)) .seg_case_layout(inputs)
   prepared_cases <- lapply(seq_along(inputs), function(k) {
     input <- inputs[[k]]
-    prepared <- tryCatch(.seg_compile_input(input$checked, input$variables,
-      input$population, measures, neighbors, relational), error = function(e) {
+    prepared <- tryCatch(.seg_prepare_population(input$checked, input$variables,
+      input$population, neighbors, relational), error = function(e) {
         if (is.null(case_info)) stop(e)
         stop("Case '", as.character(case_info$ids[k]), "': ", conditionMessage(e),
              call. = FALSE)
@@ -388,7 +403,7 @@ seg_measure <- function(
         sf::st_sf(geometry = layout$geometry)
       smoothed <- .seg_surface_variables(source, prepared$checked,
         prepared$variables, prepared$compiled, prepared$population,
-        measures, surface, dots, surface_audit, verbose)
+        surface, dots, surface_audit, verbose)
       prepared[names(smoothed)] <- smoothed
       if (!is.null(layout) && surface_audit)
         prepared$surface_info$source_rows <- input$rows[
@@ -473,10 +488,6 @@ seg_measure <- function(
       keep_contributions = .seg_or_default(spec$keep_contributions, keep_contributions))
     config
   }, compiled, flat_variables)
-  store_input <- any(vapply(compiled, function(z)
-    z$settings$output != "indices", logical(1)))
-  store_local_keys <- store_input || any(vapply(compiled, function(z)
-    z$settings$keep_scores || z$settings$keep_contributions, logical(1)))
   engine <- .seg_engine_cpp(.seg_or_default(checked$coords, matrix(numeric(), 0L, 2L)),
                          compiled, as.numeric(bands),
                          power,
@@ -486,58 +497,84 @@ seg_measure <- function(
                          match(neighbors, c("radius", "knn")) - 1L,
                          match(search, c("boost", "brute", "grid")) - 1L,
                          if (relational) prepared_network$graph else list(), grid)
-  results <- lapply(seq_along(prepared_cases), function(k) {
-    prepared <- prepared_cases[[k]]
-    indices <- seq.int((k - 1L) * length(variables) + 1L, k * length(variables))
-    analyses <- Map(.seg_prepare_result, engine$analyses[indices], compiled[indices],
-                    MoreArgs = list(bands = bands))
-    names(analyses) <- names(variables)
-    checked <- prepared$checked
-    population <- prepared$population
-    surface_info <- prepared$surface_info
-    result <- list(analyses = analyses, bands = as.numeric(bands),
-                 coords = if (store_input) checked$coords else NULL,
-                 data = if (store_input) checked$data else NULL,
-                 geometry = if (store_input) checked$geometry else NULL,
-                 population = if (store_input) population else NULL,
-                 crs = checked$crs, weighting = weighting, power = power,
-                 normalize = normalize, surface = surface, output = output,
-                 keep_scores = keep_scores, keep_contributions = keep_contributions,
-                 polygon_points = polygon_points,
-                 surface_info = surface_info,
-                 network = if (relational) prepared_network$summary else NULL,
-                 node_id = if (relational && store_local_keys) prepared_network$ids else NULL,
-                 neighbors = list(type = neighbors, values = bands,
-                                  space = if (relational) "network" else "euclidean",
-                                  units = if (neighbors == "knn") "population" else
-                                    if (relational) prepared_network$summary$units else "distance",
-                                  distance_units = if (relational) prepared_network$summary$units else "coordinate",
-                                  population = if (neighbors == "knn") "variable" else NULL,
-                                  engine = search, scope = scope),
-                 diagnostics = engine$diagnostics, call = call)
-    class(result) <- "seg_result"
-    if (!is.null(case_info)) {
-      result$case <- case_info$ids[k]
-      if (!is.null(result$data) && case_info$column %in% names(result$data) &&
-          anyNA(result$data[[case_info$column]]))
-        result$data[[case_info$column]] <- rep(result$case, nrow(result$data))
-      result$diagnostics$variables <- length(variables)
-      result$diagnostics$local_environments <- length(variables) * length(bands) *
-        nrow(prepared$checked$data)
-    }
-    result
+  .seg_prepare_result(engine, prepared_cases, compiled,
+    settings = list(bands = as.numeric(bands), weighting = weighting, power = power,
+      normalize = normalize, surface = surface, output = output,
+      keep_scores = keep_scores, keep_contributions = keep_contributions,
+      polygon_points = polygon_points,
+      neighbors = list(type = neighbors, values = bands,
+        space = if (relational) "network" else "euclidean",
+        units = if (neighbors == "knn") "population" else
+          if (relational) prepared_network$summary$units else "distance",
+        distance_units = if (relational) prepared_network$summary$units else "coordinate",
+        population = if (neighbors == "knn") "variable" else NULL,
+        engine = search, scope = scope)),
+    case_info = case_info, network = prepared_network, call = call)
+}
+
+# Prepares one population for seg_measure(). Weights and measure selections
+# arrive validated; case-specific totals and inferred populations are checked here.
+.seg_prepare_population <- function(checked, variables, population, neighbors, relational) {
+  counts <- lapply(variables, function(spec) {
+    if (!is.null(spec$counts)) .seg_counts(spec, checked$data)
   })
-  if (is.null(case_info)) return(results[[1L]])
-  names(results) <- make.unique(as.character(case_info$ids))
-  result <- results[[1L]]
-  result$case <- result$analyses <- result$data <- result$population <- NULL
-  result$cases <- results
-  result$case_ids <- case_info$ids
-  result$surface_info <- list(type = surface,
-                             cases = lapply(results, `[[`, "surface_info"))
-  result$diagnostics <- engine$diagnostics
-  result$diagnostics$analyses <- length(compiled)
-  result$diagnostics$variables <- length(variables)
-  result$diagnostics$cases <- length(results)
-  result
+  if (is.null(population)) {
+    candidates <- if (neighbors == "radius" && !relational) {
+      Map(function(spec, count) {
+        if (!is.null(count)) rowSums(count) else spec$weights
+      }, variables, counts)
+    } else list()
+    candidates <- Filter(Negate(is.null), candidates)
+    population <- if (length(candidates)) candidates[[1L]] else rep(1, nrow(checked$data))
+    if (!all(vapply(candidates, function(z) isTRUE(all.equal(z, population,
+                         check.attributes = FALSE)), logical(1)))) {
+      stop("Variable populations differ; supply the common neighborhood 'population' explicitly",
+           call. = FALSE)
+    }
+  }
+  total <- if (neighbors == "radius") sum(population)
+  if (neighbors == "radius" && (!is.finite(total) || total <= 0))
+    stop("The common population total must be positive and finite", call. = FALSE)
+  compiled <- Map(function(spec, name, count) {
+    .seg_compile(spec, checked$data, population, variable = name, counts = count)
+  }, variables, names(variables), counts)
+  list(checked = checked, variables = variables, population = population,
+       compiled = compiled,
+       surface_info = list(type = "raw", fallback = list(count = 0L), audit = NULL))
+}
+
+# Packs measurement descriptors into one surface pass for seg_measure(), then
+# recompiles their statistics with the original reporting groups. Surface
+# construction itself is owned by seg_surface.R.
+.seg_surface_variables <- function(x, checked, variables, compiled, population,
+                                    surface, dots, audit, verbose) {
+  sizes <- vapply(compiled, function(z) ncol(z$counts), integer(1))
+  ends <- cumsum(sizes)
+  columns <- Map(seq.int, ends - sizes + 1L, ends)
+  combined <- do.call(cbind, lapply(compiled, function(z) z$counts))
+  colnames(combined) <- make.unique(unlist(lapply(compiled, function(z) z$metadata$labels)))
+  reference <- which(vapply(compiled, function(z) identical(z$mass, population), logical(1)))
+  if (!length(reference)) {
+    reference_column <- ncol(combined) + 1L
+    combined <- cbind(combined, population)
+    colnames(combined)[reference_column] <- make.unique(c(colnames(combined)[-reference_column],
+                                                         ".population"))[reference_column]
+  }
+  prepared <- .seg_surface(x, combined, surface, dots, audit, verbose)
+  population <- if (length(reference)) {
+    rowSums(prepared$data[, columns[[reference[1L]]], drop = FALSE])
+  } else prepared$data[, reference_column]
+  recompiled <- Map(function(spec, config, selected) {
+    counts <- prepared$data[, selected, drop = FALSE]
+    colnames(counts) <- config$metadata$labels
+    if (config$type == 3L) spec$scores <- config$scores
+    .seg_compile(spec, counts, population,
+                   resolution = config$summary_config, counts = counts)
+  }, variables, compiled, columns)
+  checked$coords <- as.matrix(prepared$coords)
+  checked$data <- as.data.frame(prepared$data)
+  checked$geometry <- prepared$geometry
+  prepared$surface_info$variables <- setNames(columns, names(variables))
+  list(checked = checked, population = population, compiled = recompiled,
+       surface_info = prepared$surface_info)
 }

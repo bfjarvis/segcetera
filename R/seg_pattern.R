@@ -1,8 +1,9 @@
 #' Generate a synthetic segregation pattern
 #'
-#' Simulates agents with lognormal resources and associated status and group
-#' labels, along with candidate residential locations.
-#' Agents and locations are matched one-to-one by rank score.
+#' Simulates geographic distributions for a population with lognormal resources
+#' and associated status and group labels. The population composition can be
+#' varied, and the segregation patterns can vary in terms of evenness,
+#' clustering, concentration, and centrality.
 #'
 #' @param N Positive integer number of agents and retained locations.
 #' @param side Positive side length of the square, centered at the origin.
@@ -258,7 +259,8 @@ seg_pattern <- function(
     names(locations) <- c("x", "y")
     locations <- locations[
       abs(locations$x) <= side / 2 & abs(locations$y) <= side / 2,
-      , drop = FALSE
+      ,
+      drop = FALSE
     ]
   }
   locations$point_id <- seq_len(nrow(locations))

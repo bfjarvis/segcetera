@@ -207,7 +207,6 @@ test_that("grid population surfaces preserve source polygon totals", {
   checked <- segcetera:::.seg_geometry(grid_sf, seg_data[, 1:2], NULL)
   surface <- segcetera:::.seg_surface(
     x = grid_sf,
-    coords = checked$coords,
     data = as.matrix(checked$data),
     surface = "grid",
     args = list(nrow = 10, ncol = 10),
@@ -269,17 +268,10 @@ test_that("raw, grid, and pycno surfaces preserve overall group totals", {
   x <- sf::st_sf(a = values[, 1], b = values[, 2], geometry = geom)
   checked <- segcetera:::.seg_geometry(x[, c("a", "b")], NULL, NULL)
 
-  raw <- segcetera:::.seg_surface(
-    x = x[, c("a", "b")],
-    coords = checked$coords,
-    data = as.matrix(checked$data),
-    surface = "raw",
-    args = list(),
-    verbose = FALSE
-  )
+  raw <- seg_measure(x, list(groups = seg_categorical(c("a", "b"))),
+                     bands = 0, output = "full")
   grid <- segcetera:::.seg_surface(
     x = x[, c("a", "b")],
-    coords = checked$coords,
     data = as.matrix(checked$data),
     surface = "grid",
     args = list(celldim = 0.5),
@@ -287,7 +279,6 @@ test_that("raw, grid, and pycno surfaces preserve overall group totals", {
   )
   pycno <- segcetera:::.seg_surface(
     x = x[, c("a", "b")],
-    coords = checked$coords,
     data = as.matrix(checked$data),
     surface = "pycno",
     args = list(celldim = 0.5, converge = 1),
@@ -367,7 +358,6 @@ test_that("grid surfaces assign missing non-empty polygons to fallback cells", {
   expect_warning(
     result <- segcetera:::.seg_surface(
       x = x[, c("a", "b")],
-      coords = checked$coords,
       data = as.matrix(checked$data),
       surface = "grid",
       args = list(nrow = 2, ncol = 2),
@@ -403,7 +393,6 @@ test_that("grid surfaces assign missing non-empty polygons to fallback cells", {
   expect_warning(
     pycno <- segcetera:::.seg_surface(
       x = x[, c("a", "b")],
-      coords = checked$coords,
       data = as.matrix(checked$data),
       surface = "pycno",
       args = list(nrow = 2, ncol = 2, converge = 1),
@@ -437,7 +426,6 @@ test_that("grid fallback preserves the locations of missing polygon counts", {
   expect_warning(
     result <- segcetera:::.seg_surface(
       x = x[, c("a", "b")],
-      coords = checked$coords,
       data = as.matrix(checked$data),
       surface = "grid",
       args = list(nrow = 2, ncol = 4),
@@ -478,7 +466,6 @@ test_that("grid fallback preserves the locations of missing polygon counts", {
   expect_warning(
     pycno <- segcetera:::.seg_surface(
       x = x[, c("a", "b")],
-      coords = checked$coords,
       data = as.matrix(checked$data),
       surface = "pycno",
       args = list(nrow = 2, ncol = 4, converge = 1),
@@ -539,7 +526,6 @@ test_that("pycnophylactic surfaces preserve source polygon totals", {
   checked <- segcetera:::.seg_geometry(x[, c("a", "b")], NULL, NULL)
   surface <- segcetera:::.seg_surface(
     x = x[, c("a", "b")],
-    coords = checked$coords,
     data = as.matrix(checked$data),
     surface = "pycno",
     args = list(celldim = 0.5, converge = 1),

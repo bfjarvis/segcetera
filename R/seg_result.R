@@ -1,66 +1,124 @@
-# Turns one native analysis into a named result for seg_measure(). Attaches labels
-# and settings, and drops bulky exact-value metadata for indices-only output.
-.seg_prepare_result <- function(result, config, bands) {
-  keep_env <- config$settings$output != "indices"
-  result$settings <- config$settings
-  if (!is.null(result$scores) || !is.null(result$contributions)) {
-    labels <- config$pair_labels
-    pairs <- if (length(labels) > 1L) utils::combn(labels, 2) else
-      matrix(character(), nrow = 2, ncol = 0)
-    result$score_pairs <- data.frame(group_a = pairs[1, ], group_b = pairs[2, ])
-    for (what in c("scores", "contributions")) {
-      if (is.null(result[[what]])) next
-      for (scope in c("overall", "pairwise")) {
-        result[[what]][[scope]] <- lapply(result[[what]][[scope]], function(z) {
-          names(z) <- as.character(bands)
+# Builds complete single- or multi-case results for seg_measure(). Native
+# analysis labels, retained inputs, and shared metadata are assembled here once.
+.seg_prepare_result <- function(engine, prepared_cases, compiled, settings,
+                                case_info, network, call) {
+  bands <- settings$bands
+  analyses <- engine$analyses
+  for (i in seq_along(analyses)) {
+    analysis <- analyses[[i]]
+    config <- compiled[[i]]
+    keep_env <- config$settings$output != "indices"
+    analysis$settings <- config$settings
+    if (!is.null(analysis$scores) || !is.null(analysis$contributions)) {
+      labels <- config$pair_labels
+      pairs <- if (length(labels) > 1L) utils::combn(labels, 2) else
+        matrix(character(), nrow = 2, ncol = 0)
+      analysis$score_pairs <- data.frame(group_a = pairs[1, ], group_b = pairs[2, ])
+      for (what in c("scores", "contributions")) {
+        if (is.null(analysis[[what]])) next
+        for (scope in c("overall", "pairwise")) {
+          analysis[[what]][[scope]] <- lapply(analysis[[what]][[scope]], function(z) {
+            names(z) <- as.character(bands)
+            z
+          })
+        }
+      }
+    }
+    for (group in c("overall", "pairwise")) {
+      analysis$indices[[group]] <- lapply(analysis$indices[[group]], function(z) {
+        names(z) <- as.character(bands)
+        z
+      })
+    }
+    for (key in names(analysis$indices$pairwise)) {
+      analysis$indices$pairwise[[key]] <- lapply(analysis$indices$pairwise[[key]], function(z) {
+        dimnames(z) <- list(config$pair_labels, config$pair_labels)
+        z
+      })
+    }
+    if (length(analysis$rank_summary)) {
+      names(analysis$rank_summary) <- as.character(bands)
+      analysis$rank_summary <- lapply(analysis$rank_summary, function(z) {
+        dimnames(z) <- list(config$exposure_labels, config$metadata$localenv$labels)
+        z
+      })
+    }
+    if (keep_env) {
+      names(analysis$env) <- as.character(bands)
+      analysis$env <- lapply(analysis$env, function(z) {
+        colnames(z) <- config$metadata$localenv$labels
+        z
+      })
+      if (length(analysis$interpolation)) {
+        names(analysis$interpolation) <- as.character(bands)
+        analysis$interpolation <- lapply(analysis$interpolation, function(z) {
+          colnames(z) <- c("bottom_category_share", "top_category_share",
+                           "interpolated_share")
           z
         })
       }
     }
-  }
-  for (group in c("overall", "pairwise")) {
-    result$indices[[group]] <- lapply(result$indices[[group]], function(z) {
-      names(z) <- as.character(bands)
-      z
-    })
-  }
-  for (key in names(result$indices$pairwise)) {
-    result$indices$pairwise[[key]] <- lapply(result$indices$pairwise[[key]], function(z) {
-      dimnames(z) <- list(config$pair_labels, config$pair_labels)
-      z
-    })
-  }
-  if (length(result$rank_summary)) {
-    names(result$rank_summary) <- as.character(bands)
-    result$rank_summary <- lapply(result$rank_summary, function(z) {
-      dimnames(z) <- list(config$exposure_labels, config$metadata$localenv$labels)
-      z
-    })
-  }
-  if (keep_env) {
-    names(result$env) <- as.character(bands)
-    result$env <- lapply(result$env, function(z) {
-      colnames(z) <- config$metadata$localenv$labels
-      z
-    })
-    if (length(result$interpolation)) {
-      names(result$interpolation) <- as.character(bands)
-      result$interpolation <- lapply(result$interpolation, function(z) {
-        colnames(z) <- c("bottom_category_share", "top_category_share",
-                         "interpolated_share")
-        z
-      })
+    metadata <- config$metadata
+    # Millions of exact values are calculation inputs, not lightweight metadata.
+    if (config$type == 3L && !keep_env) {
+      metadata$distinct_values <- sum(config$totals > 0)
+      metadata$labels <- metadata$scores <- metadata$shares <- NULL
     }
+    analysis$definition <- metadata
+    if (!is.null(analysis$knn)) analysis$knn <- data.frame(band = bands, analysis$knn)
+    names(analysis$status) <- as.character(bands)
+    analyses[[i]] <- analysis
   }
-  metadata <- config$metadata
-  # Millions of exact values are calculation inputs, not lightweight metadata.
-  if (config$type == 3L && !keep_env) {
-    metadata$distinct_values <- sum(config$totals > 0)
-    metadata$labels <- metadata$scores <- metadata$shares <- NULL
-  }
-  result$definition <- metadata
-  if (!is.null(result$knn)) result$knn <- data.frame(band = bands, result$knn)
-  names(result$status) <- as.character(bands)
+  n_variables <- length(prepared_cases[[1L]]$variables)
+  store_input <- any(vapply(compiled, function(z)
+    z$settings$output != "indices", logical(1)))
+  store_local_keys <- store_input || any(vapply(compiled, function(z)
+    z$settings$keep_scores || z$settings$keep_contributions, logical(1)))
+  results <- lapply(seq_along(prepared_cases), function(k) {
+    prepared <- prepared_cases[[k]]
+    indices <- seq.int((k - 1L) * n_variables + 1L, k * n_variables)
+    case_analyses <- analyses[indices]
+    names(case_analyses) <- names(prepared$variables)
+    checked <- prepared$checked
+    result <- list(analyses = case_analyses, bands = bands,
+      coords = if (store_input) checked$coords else NULL,
+      data = if (store_input) checked$data else NULL,
+      geometry = if (store_input) checked$geometry else NULL,
+      population = if (store_input) prepared$population else NULL,
+      crs = checked$crs, weighting = settings$weighting, power = settings$power,
+      normalize = settings$normalize, surface = settings$surface,
+      output = settings$output, keep_scores = settings$keep_scores,
+      keep_contributions = settings$keep_contributions,
+      polygon_points = settings$polygon_points,
+      surface_info = prepared$surface_info,
+      network = if (!is.null(network)) network$summary else NULL,
+      node_id = if (!is.null(network) && store_local_keys) network$ids else NULL,
+      neighbors = settings$neighbors,
+      diagnostics = engine$diagnostics, call = call)
+    class(result) <- "seg_result"
+    if (!is.null(case_info)) {
+      result$case <- case_info$ids[k]
+      if (!is.null(result$data) && case_info$column %in% names(result$data) &&
+          anyNA(result$data[[case_info$column]]))
+        result$data[[case_info$column]] <- rep(result$case, nrow(result$data))
+      result$diagnostics$variables <- n_variables
+      result$diagnostics$local_environments <- n_variables * length(bands) *
+        nrow(prepared$checked$data)
+    }
+    result
+  })
+  if (is.null(case_info)) return(results[[1L]])
+  names(results) <- make.unique(as.character(case_info$ids))
+  result <- results[[1L]]
+  result$case <- result$analyses <- result$data <- result$population <- NULL
+  result$cases <- results
+  result$case_ids <- case_info$ids
+  result$surface_info <- list(type = settings$surface,
+                             cases = lapply(results, `[[`, "surface_info"))
+  result$diagnostics <- engine$diagnostics
+  result$diagnostics$analyses <- length(compiled)
+  result$diagnostics$variables <- n_variables
+  result$diagnostics$cases <- length(results)
   result
 }
 
@@ -197,18 +255,6 @@ print.seg_result <- function(x, ...) {
   invisible(x)
 }
 
-# Resolves analysis names and band positions for as.data.frame(); st_as_sf()
-# uses the same selection rules by delegating to that method.
-.seg_analysis_subset <- function(x, variables, bands) {
-  if (is.null(variables)) variables <- names(x$analyses)
-  if (!is.character(variables) || !length(variables) || anyNA(variables) ||
-      !all(variables %in% names(x$analyses)))
-    stop("'variables' must name stored analyses", call. = FALSE)
-  b <- if (is.null(bands)) seq_along(x$bands) else match(bands, x$bands)
-  if (!length(b) || anyNA(b)) stop("'bands' must match stored bands", call. = FALSE)
-  list(variables = variables, bands = b)
-}
-
 #' @rdname seg_result
 #' @method as.data.frame seg_result
 #' @export
@@ -220,16 +266,7 @@ as.data.frame.seg_result <- function(x, row.names = NULL, optional = FALSE,
   if (!is.null(x$cases)) {
     blocks <- lapply(x$cases, function(one) as.data.frame(one, what = what,
       variables = variables, bands = bands, optional = optional))
-    columns <- unique(unlist(lapply(blocks, names), use.names = FALSE))
-    blocks <- lapply(blocks, function(block) {
-      for (column in setdiff(columns, names(block))) {
-        template <- blocks[[which(vapply(blocks, function(z)
-          column %in% names(z), logical(1)))[1L]]][[column]]
-        block[[column]] <- template[rep(NA_integer_, nrow(block))]
-      }
-      block[columns]
-    })
-    out <- do.call(rbind, blocks)
+    out <- .seg_bind_result_rows(blocks)
     rownames(out) <- row.names
     return(out)
   }
@@ -239,21 +276,27 @@ as.data.frame.seg_result <- function(x, row.names = NULL, optional = FALSE,
     interpolation = .seg_interpolation_rows,
     scores = function(...) .seg_score_rows(..., what = "scores"),
     contributions = function(...) .seg_score_rows(..., what = "contributions"))
-  selected <- .seg_analysis_subset(x, variables, bands)
+  selected_variables <- if (is.null(variables)) names(x$analyses) else variables
+  if (!is.character(selected_variables) || !length(selected_variables) ||
+      anyNA(selected_variables) || !all(selected_variables %in% names(x$analyses)))
+    stop("'variables' must name stored analyses", call. = FALSE)
+  selected_bands <- if (is.null(bands)) seq_along(x$bands) else match(bands, x$bands)
+  if (!length(selected_bands) || anyNA(selected_bands))
+    stop("'bands' must match stored bands", call. = FALSE)
   if (is.null(variables)) {
-    available <- vapply(x$analyses[selected$variables], function(a) switch(what,
+    available <- vapply(x$analyses[selected_variables], function(a) switch(what,
       indices = , pairwise = , exposure = a$settings$output != "localenv",
       env = !is.null(a$env),
       scores = !is.null(a$scores), contributions = !is.null(a$contributions),
       interpolation = !identical(a$definition$representation, "intervals") ||
         !is.null(a$env), TRUE), logical(1))
-    if (any(available)) selected$variables <- selected$variables[available]
+    if (any(available)) selected_variables <- selected_variables[available]
   }
-  analyses <- x$analyses[selected$variables]
+  analyses <- x$analyses[selected_variables]
   schema <- .seg_result_schema(analyses, what)
   rows <- list()
   keys <- c(d = "dissimilarity", h = "information", r = "diversity", s = "square_root")
-  for (name in selected$variables) {
+  for (name in selected_variables) {
     analysis <- x$analyses[[name]]
     if (what %in% c("scores", "contributions") && is.null(analysis[[what]])) {
       stop("Local ", what, " were not retained; set keep_", what, " = TRUE",
@@ -273,19 +316,12 @@ as.data.frame.seg_result <- function(x, row.names = NULL, optional = FALSE,
       stop("Interpolation diagnostics were not stored; use output = 'full' or 'localenv'",
            call. = FALSE)
     }
-    for (b in selected$bands) {
+    for (b in selected_bands) {
       base <- list(variable = name, band = x$bands[b])
       rows <- c(rows, extract(analysis, base, b, keys))
     }
   }
-  # Fill only structurally inapplicable fields when combining different summaries.
-  rows <- lapply(rows, function(block) {
-    for (column in setdiff(names(schema), names(block))) {
-      block[[column]] <- schema[[column]][rep(NA_integer_, nrow(block))]
-    }
-    block[names(schema)]
-  })
-  out <- if (length(rows)) do.call(rbind, rows) else schema
+  out <- .seg_bind_result_rows(rows, schema)
   if (what %in% c("env", "interpolation", "scores", "contributions") && !is.null(x$node_id)) {
     out$node <- x$node_id[out$location]
   }
@@ -294,6 +330,25 @@ as.data.frame.seg_result <- function(x, row.names = NULL, optional = FALSE,
   }
   rownames(out) <- row.names
   out
+}
+
+# Binds result blocks for as.data.frame() at both case and variable/band levels.
+# Typed schemas preserve empty tables, ID classes, and structural missing fields.
+.seg_bind_result_rows <- function(rows, schema = NULL) {
+  if (is.null(schema)) {
+    columns <- unique(unlist(lapply(rows, names), use.names = FALSE))
+    schema <- as.data.frame(setNames(lapply(columns, function(column) {
+      first <- which(vapply(rows, function(z) column %in% names(z), logical(1)))[1L]
+      rows[[first]][[column]][FALSE]
+    }), columns), stringsAsFactors = FALSE)
+  }
+  if (!length(rows)) return(schema)
+  rows <- lapply(rows, function(block) {
+    for (column in setdiff(names(schema), names(block)))
+      block[[column]] <- schema[[column]][rep(NA_integer_, nrow(block))]
+    block[names(schema)]
+  })
+  do.call(rbind, rows)
 }
 
 # Defines as.data.frame() columns from the selected analyses so empty tables

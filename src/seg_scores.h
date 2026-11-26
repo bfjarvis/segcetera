@@ -67,13 +67,6 @@ inline double seg_G(const Local& p, const Regional& P, int K) {
   return seg_local_scores(p, P, selected, K)[Root];
 }
 
-template<class Local, class Regional>
-inline double seg_Delta(const Local& p, const Regional& P) {
-  double out = 0;
-  for (std::size_t g = 0; g < p.size(); ++g) out += std::abs(p[g] - P[g]);
-  return out;
-}
-
 template<class Vector>
 inline Scores seg_index_normalizers(const Vector& P, int K) {
   Scores out{};

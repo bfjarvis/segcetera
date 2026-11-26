@@ -21,6 +21,40 @@ test_that("count preparation is reused during population inference", {
   expect_true(all(is.na(result$analyses$first$env[[1]][2, ])))
 })
 
+test_that("case preparation resolves each supplied weight vector once", {
+  d <- data.frame(x = rep(0:2, 2), y = 0, year = rep(1:2, each = 3),
+                  g = rep(c("A", "B", "A"), 2), w = 1:6)
+  original <- segcetera:::.seg_mass
+  calls <- 0L
+  testthat::local_mocked_bindings(.seg_mass = function(...) {
+    calls <<- calls + 1L
+    original(...)
+  }, .package = "segcetera")
+  result <- seg_measure(d, list(g = seg_categorical("g", weights = "w")),
+    coords = c("x", "y"), population = d$w, case = "year", bands = 1)
+  expect_identical(calls, 2L)
+  expect_equal(vapply(result$cases, function(z)
+    z$analyses$g$definition$eligible_population, numeric(1)), c(`1` = 6, `2` = 15))
+  for (invalid in list(c(1, NA, 1, 1, 1, 1), rep(-1, 6), rep(Inf, 6), 1:2)) {
+    expect_error(seg_measure(d,
+      list(g = seg_categorical("g", weights = invalid)),
+      coords = c("x", "y"), case = "year", bands = 1), "Population weights")
+  }
+})
+
+test_that("effective measures retain aliases and variable overrides", {
+  d <- data.frame(x = 0:2, y = 0, g = c("A", "B", "A"))
+  run <- function(selected, global = "all") seg_measure(d,
+    list(g = seg_categorical("g", measures = selected)),
+    coords = c("x", "y"), bands = 1, measures = global)
+  expect_equal(run("relative_diversity")$analyses, run("diversity")$analyses)
+  expect_equal(run("variance_ratio")$analyses, run("diversity")$analyses)
+  expect_equal(run("information", "unused")$analyses, run("information")$analyses)
+  for (invalid in list(NULL, character(), NA_character_, "unknown")) {
+    expect_error(run(invalid, "unknown"), "Unknown or empty measure")
+  }
+})
+
 test_that("surface setup validates the current option vocabulary", {
   geom <- sf::st_make_grid(sf::st_as_sfc(sf::st_bbox(
     c(xmin = 0, ymin = 0, xmax = 2, ymax = 1))), n = c(2, 1))

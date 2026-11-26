@@ -51,61 +51,24 @@ seg_surface <- function(x, vars, surface = c("grid", "pycno"),
     stop("'surface_audit' must be TRUE or FALSE", call. = FALSE)
   counts <- .seg_counts(list(counts = vars, na.action = "fail"),
                          sf::st_drop_geometry(x))
-  result <- .seg_surface(x, coords = NULL, data = counts, surface = surface,
+  result <- .seg_surface(x, data = counts, surface = surface,
                           args = list(...), audit = surface_audit, verbose = verbose)
   result$crs <- sf::st_crs(x)
   result
 }
 
-# Prepares all variables in one gridding pass for seg_measure(), then recompiles
-# each variable on the shared grid while retaining its reporting groups.
-.seg_surface_variables <- function(x, checked, variables, compiled, population,
-                                    measures, surface, dots, audit, verbose) {
-  sizes <- vapply(compiled, function(z) ncol(z$counts), integer(1))
-  ends <- cumsum(sizes)
-  columns <- Map(seq.int, ends - sizes + 1L, ends)
-  combined <- do.call(cbind, lapply(compiled, function(z) z$counts))
-  colnames(combined) <- make.unique(unlist(lapply(compiled, function(z) z$metadata$labels)))
-  reference <- which(vapply(compiled, function(z) identical(z$mass, population), logical(1)))
-  if (!length(reference)) {
-    reference_column <- ncol(combined) + 1L
-    combined <- cbind(combined, population)
-    colnames(combined)[reference_column] <- make.unique(c(colnames(combined)[-reference_column],
-                                                         ".population"))[reference_column]
-  }
-  prepared <- .seg_surface(x, checked$coords, combined, surface, dots, audit, verbose)
-  population <- if (length(reference)) {
-    rowSums(prepared$data[, columns[[reference[1L]]], drop = FALSE])
-  } else prepared$data[, reference_column]
-  recompiled <- Map(function(spec, config, selected) {
-    counts <- prepared$data[, selected, drop = FALSE]
-    colnames(counts) <- config$metadata$labels
-    if (config$type == 3L) spec$scores <- config$scores
-    .seg_compile(spec, counts, population, measures,
-                   resolution = config$summary_config, counts = counts)
-  }, variables, compiled, columns)
-  checked$coords <- as.matrix(prepared$coords)
-  checked$data <- as.data.frame(prepared$data)
-  checked$geometry <- prepared$geometry
-  prepared$surface_info$variables <- setNames(columns, names(variables))
-  list(checked = checked, population = population, compiled = recompiled,
-       surface_info = prepared$surface_info)
-}
-
 #' Construct a population surface for spatial segregation calculations
 #'
 #' `.seg_surface()` prepares the coordinate and count matrix that will be passed
-#' to the segregation engine. The `"raw"` surface returns the input coordinates
-#' and data unchanged. The `"grid"` and `"pycno"` surfaces require polygonal
+#' to the segregation engine. The `"grid"` and `"pycno"` surfaces require polygonal
 #' `sf` input and redistribute polygon counts to a regular square grid before
 #' optionally applying pycnophylactic smoothing.
 #' Shared by `seg_measure()` and `seg_surface()` after count preparation.
 #'
 #' @param x Input object supplied to `seg_measure()`. Grid-based surfaces require an
 #'   `sf` object with polygon geometry.
-#' @param coords Numeric two-column coordinate matrix extracted from `x`.
 #' @param data Numeric matrix of group counts.
-#' @param surface Character scalar. One of `"raw"`, `"grid"`, or `"pycno"`.
+#' @param surface Character scalar: `"grid"` or `"pycno"`.
 #' @param args Named list of surface options passed through `...` from `seg_measure()`.
 #' @param audit Logical. If `TRUE`, retain surface-construction intermediates.
 #' @param verbose Logical. If `TRUE`, report timing messages.
@@ -116,25 +79,12 @@ seg_surface <- function(x, vars, surface = c("grid", "pycno"),
 #' @noRd
 .seg_surface <- function(
   x,
-  coords,
   data,
   surface,
   args,
   audit = FALSE,
   verbose = FALSE
 ) {
-  if (surface == "raw") {
-    return(list(
-      coords = coords,
-      data = data,
-      geometry = NULL,
-      surface_info = list(
-        type = "raw",
-        fallback = list(count = 0L, ids = integer(), cells = integer()),
-        audit = NULL
-      )
-    ))
-  }
   if (!inherits(x, "sf")) {
     stop("surface = '", surface, "' requires 'x' to be an sf object", call. = FALSE)
   }
@@ -197,7 +147,12 @@ seg_surface <- function(x, vars, surface = c("grid", "pycno"),
 #' @noRd
 .seg_grid <- function(x, data, args, audit = FALSE) {
   template <- .seg_grid_template(x, args)
-  zone_ids <- .seg_rasterize_zones(x, template)
+  zones <- x
+  zones$.seg_zone_id <- seq_len(nrow(zones))
+  zone_raster <- terra::rasterize(terra::vect(zones), template,
+    field = ".seg_zone_id", background = NA, touches = FALSE)
+  zone_ids <- as.integer(terra::values(zone_raster, mat = FALSE))
+  rm(zones, zone_raster)
   fallback <- .seg_fallback_counts(zone_ids, x, data, template)
   values <- .seg_distribute_counts(zone_ids, data)
 
@@ -264,30 +219,6 @@ seg_surface <- function(x, vars, surface = c("grid", "pycno"),
   terra::rast(nrows = rows, ncols = columns,
     xmin = bbox$xmin, xmax = bbox$xmax, ymin = bbox$ymin, ymax = bbox$ymax,
     crs = st_crs(x)$wkt)
-}
-
-#' Rasterize source polygon identifiers
-#'
-#' Assigns each grid cell to the polygon containing its centroid. The returned
-#' vector uses `NA` for cells outside the source polygons.
-#'
-#' @param x Polygonal `sf` object.
-#' @param template Terra raster template.
-#'
-#' @return Integer vector of source polygon row numbers, one value per raster
-#'   cell.
-#'
-#' @noRd
-.seg_rasterize_zones <- function(x, template) {
-  x$.seg_zone_id <- seq_len(nrow(x))
-  zone_raster <- terra::rasterize(
-    terra::vect(x),
-    template,
-    field = ".seg_zone_id",
-    background = NA,
-    touches = FALSE
-  )
-  as.integer(terra::values(zone_raster, mat = FALSE))
 }
 
 #' Distribute polygon counts over assigned grid cells

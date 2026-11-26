@@ -1,5 +1,8 @@
 # segcetera (development version)
 
+- Simplified internal input preparation and result assembly, consolidated table
+  binding, and resolved row weights and measure selections before splitting
+  cases. Surface construction and reporting helpers now live with their owners.
 - Added `case` to measure repeated populations on common support with shared
   native searches. Case-specific indices, exposures, local summaries, scores,
   and diagnostics retain their own reference distributions; extracted tables
