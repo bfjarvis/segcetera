@@ -1,0 +1,116 @@
+---
+title: "Repeated measurements on common geography"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Repeated measurements on common geography}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7, fig.height = 4)
+```
+
+Repeated observations of a city or simulation often share the same spatial
+support. `case` identifies each measurement instance. The native engine searches
+each support row once, then applies its neighbors to all cases and variables.
+Each case has its own population, regional proportions, income ranks, and
+index normalizers.
+
+## Two populations on one grid
+
+```{r populations}
+library(segcetera)
+library(ggplot2)
+
+city <- expand.grid(x = 0:9, y = 0:9)
+city$year <- 2020L
+city$A <- ifelse(city$x < 5, 9, 1)
+city$B <- 10 - city$A
+later <- transform(city, year = 2030L, A = ifelse(x < 5, 7, 3))
+later$B <- 10 - later$A
+observations <- rbind(city, later)
+
+result <- seg_measure(
+  observations,
+  list(race = seg_categorical(c("A", "B"))),
+  coords = c("x", "y"),
+  case = "year",
+  bands = c(0, 2, 4),
+  output = "full"
+)
+result
+as.data.frame(result)
+```
+
+The same `case` column appears in pairwise indices, exposures, local summaries,
+retained scores/contributions, and diagnostic tables. Individual results remain
+available in `result$cases`, with original ID values in `result$case_ids`.
+Calls without `case` retain their ordinary result structure and tables.
+
+```{r local-composition}
+environments <- as.data.frame(result, what = "env")
+environments$x <- result$coords[environments$location, 1]
+environments$y <- result$coords[environments$location, 2]
+
+ggplot(subset(environments, category == "A"), aes(x, y, fill = value)) +
+  geom_tile() +
+  facet_grid(case ~ band, labeller = label_both) +
+  scale_fill_viridis_c(limits = c(0, 1), name = "A share") +
+  coord_equal() +
+  theme_minimal()
+```
+
+For `sf` input, `sf::st_as_sf(result, what = "env")` attaches the shared
+geometries and retains the case column. Support row numbers have the same
+meaning across all cases.
+
+## Agreement with separate measurements
+
+```{r compare}
+separate <- lapply(split(observations, observations$year), function(d) {
+  seg_measure(d, list(race = seg_categorical(c("A", "B"))),
+              coords = c("x", "y"), bands = c(0, 2, 4), output = "full")
+})
+all(vapply(seq_along(separate), function(i) {
+  isTRUE(all.equal(result$cases[[i]]$analyses, separate[[i]]$analyses))
+}, logical(1)))
+c(shared = result$diagnostics$focal_searches,
+  separate = sum(vapply(separate, function(z) z$diagnostics$focal_searches, numeric(1))))
+```
+
+Radius weights are shared across cases. For kNN, cases with different eligible
+populations may need different neighborhood radii. The shared search visits
+enough candidates for every case; population selection, fractional boundary
+shells, and adaptive weighting then use each case's own population.
+
+```{r population-neighborhoods}
+nearest <- seg_measure(
+  observations, list(race = seg_categorical(c("A", "B"))),
+  coords = c("x", "y"), case = "year", neighbors = "knn",
+  bands = c(25, 100), output = "indices"
+)
+as.data.frame(nearest, what = "diagnostics")
+```
+
+## Support and bands
+
+Cases are aligned by exact geometry, coordinates, or network node. Their row
+order may differ. Use common, harmonized boundaries for polygon cases.
+Repeated observations at a location use occurrence slots
+within each case, preserving the focal-first rule for coincident microdata.
+An absent slot has zero population; its local composition can still reflect
+nearby populated slots. Such rows have zero population weight in overall
+indices. Supplied rows with missing values follow the variable's `na.action`.
+
+Omitted radius bands are calculated once from the common support with pooled
+case populations as sampling weights. Explicit bands provide a fixed scale
+when comparisons also involve independently prepared datasets.
+
+Grid and pycnophylactic surfaces are prepared separately for each case on the
+common source polygons. Their resulting supports are then aligned for shared
+searches. Surface audit information is available per case in
+`result$cases[[i]]$surface_info`. With `surface_audit = TRUE`,
+`surface_info$locations` maps that case's prepared surface rows to the shared
+support, and `surface_info$source_rows` maps common source polygon IDs to rows
+in the original multi-case input. Absent source rows are `NA`.

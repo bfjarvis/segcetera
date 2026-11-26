@@ -114,6 +114,15 @@ are single-band measurements; a joint multi-band call shares search work and
 benefits from its own timing comparison. Geometry, population distribution,
 variable specifications, and hardware also influence the crossover.
 
+## Shared cases
+
+`cases.R` compares one shared-case call with separate calls for four populations
+on common square-lattice support, using each search backend with radius and kNN
+neighborhoods. It checks index agreement and the number of focal searches before
+reporting end-to-end timings, including case alignment and input preparation.
+Settings are at the top of the script; use the same optimized private-library
+setup as the other benchmarks.
+
 ## Results
 
 Each run saves a timing CSV, an RDS containing raw bench results and settings,

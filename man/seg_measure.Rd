@@ -9,6 +9,7 @@ seg_measure(
   variables,
   coords = NULL,
   data = NULL,
+  case = NULL,
   population = NULL,
   measures = "all",
   bands = NULL,
@@ -62,6 +63,19 @@ use an appropriate projected CRS for metric bandwidths.}
 This may contain category memberships, observed
 numerical values, and counts selected by the specifications. If omitted,
 attributes come from `x` (excluding sf geometry).}
+
+\item{case}{Optional single column name or position identifying repeated
+measurements on common geography. Each case has its own population,
+distributions, and normalizers; searches are shared across cases. Support
+rows are matched by exact geometry, coordinates, or network node.
+Network input uses the node together with any supplied geometry/coordinates.
+Repeated rows at a location are matched by occurrence within each case;
+absent rows have zero population. Omitted radius bands use the pooled
+case populations to select one shared set of distance quantiles. Results
+retain individual `seg_result` objects in `cases`; extracted tables identify
+their case in a `case` column. With `case = NULL`, the usual result structure
+and tables are unchanged. Grid/pycnophylactic surfaces are prepared per case
+on the common source geometry, then aligned for shared searches.}
 
 \item{population}{Default population-weight column or numeric vector for
 observed-value specifications.
@@ -243,7 +257,9 @@ selects the requested eligible population, truncating the focal unit when
 needed and including equidistant boundary units proportionately. Neighboring
 units are added by representative-point distance. An unattainable threshold raises an error.
 
-Each named variable has a result in `result$analyses`. Its overall
+Each measurement stores named variable results in `analyses`. With `case`,
+measurements are stored in `result$cases`; an ordinary call returns the
+measurement directly, with variables in `result$analyses`. Its overall
 measures are stored in `indices$overall` and requested pairwise
 measures in `indices$pairwise`.
 Pairwise scalar measures are returned as one symmetric matrix per

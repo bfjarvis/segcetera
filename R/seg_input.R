@@ -133,6 +133,28 @@
   as.numeric(value)
 }
 
+# Prepares one population's statistical inputs for seg_measure(). Case calls
+# align spatial support afterward, preserving case-specific regional references.
+.seg_compile_input <- function(checked, variables, population, measures,
+                               neighbors, relational) {
+  counts <- lapply(variables, function(spec) {
+    if (!is.null(spec$counts)) .seg_counts(spec, checked$data)
+  })
+  population <- if (neighbors == "knn" || relational) {
+    .seg_mass(population, checked$data, nrow(checked$data))
+  } else .seg_population(population, variables, checked$data, counts)
+  total <- if (neighbors == "radius") sum(population)
+  if (neighbors == "radius" && (!is.finite(total) || total <= 0))
+    stop("The common population total must be positive and finite", call. = FALSE)
+  compiled <- Map(function(spec, name, count) {
+    .seg_compile(spec, checked$data, population, measures, variable = name,
+                 counts = count)
+  }, variables, names(variables), counts)
+  list(checked = checked, variables = variables, population = population,
+       compiled = compiled,
+       surface_info = list(type = "raw", fallback = list(count = 0L), audit = NULL))
+}
+
 # Keeps retention checks consistent between seg_measure() and the three variable
 # constructors. Only a per-variable setting can use NULL to inherit.
 .seg_validate_retention <- function(keep_scores, keep_contributions,

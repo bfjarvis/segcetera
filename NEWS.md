@@ -1,5 +1,9 @@
 # segcetera (development version)
 
+- Added `case` to measure repeated populations on common support with shared
+  native searches. Case-specific indices, exposures, local summaries, scores,
+  and diagnostics retain their own reference distributions; extracted tables
+  identify the case. Omitted `case` preserves the ordinary result structure.
 - Default distance bands now use quantiles 0.01, 0.025, 0.05, 0.1, 0.15, 0.2,
   0.25, 0.3, 0.4, and 0.5 of sampled positive pairwise distances.
 - Default `search = "auto"` uses grid offsets for regular lattices, brute force

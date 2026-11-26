@@ -24,7 +24,9 @@
 #' needed and including equidistant boundary units proportionately. Neighboring
 #' units are added by representative-point distance. An unattainable threshold raises an error.
 #'
-#' Each named variable has a result in `result$analyses`. Its overall
+#' Each measurement stores named variable results in `analyses`. With `case`,
+#' measurements are stored in `result$cases`; an ordinary call returns the
+#' measurement directly, with variables in `result$analyses`. Its overall
 #' measures are stored in `indices$overall` and requested pairwise
 #' measures in `indices$pairwise`.
 #' Pairwise scalar measures are returned as one symmetric matrix per
@@ -54,6 +56,18 @@
 #'   This may contain category memberships, observed
 #'   numerical values, and counts selected by the specifications. If omitted,
 #'   attributes come from `x` (excluding sf geometry).
+#' @param case Optional single column name or position identifying repeated
+#'   measurements on common geography. Each case has its own population,
+#'   distributions, and normalizers; searches are shared across cases. Support
+#'   rows are matched by exact geometry, coordinates, or network node.
+#'   Network input uses the node together with any supplied geometry/coordinates.
+#'   Repeated rows at a location are matched by occurrence within each case;
+#'   absent rows have zero population. Omitted radius bands use the pooled
+#'   case populations to select one shared set of distance quantiles. Results
+#'   retain individual `seg_result` objects in `cases`; extracted tables identify
+#'   their case in a `case` column. With `case = NULL`, the usual result structure
+#'   and tables are unchanged. Grid/pycnophylactic surfaces are prepared per case
+#'   on the common source geometry, then aligned for shared searches.
 #' @param measures A character vector naming measures to compute: "all",
 #'   "exposure", "information", "diversity", "dissimilarity", or "square_root".
 #'   `"all"` includes all five families. Aliases `"relative_diversity"` and
@@ -263,6 +277,7 @@ seg_measure <- function(
   variables,
   coords = NULL,
   data = NULL,
+  case = NULL,
   population = NULL,
   measures = "all",
   bands = NULL,
@@ -349,33 +364,60 @@ seg_measure <- function(
     if (!is.null(node_id)) stop("'node_id' requires a network", call. = FALSE)
     checked <- .seg_geometry(x, data, coords, polygon_points)
   }
-  count_data <- lapply(variables, function(spec) {
-    if (!is.null(spec$counts)) .seg_counts(spec, checked$data) else NULL
-  })
   supplied_population <- !is.null(population)
-  population <- if (neighbors == "knn" || relational) {
-    .seg_mass(population, checked$data, nrow(checked$data))
-  } else .seg_population(population, variables, checked$data, count_data)
-  population_total <- if (neighbors == "radius") sum(population)
-  if (neighbors == "radius" && (!is.finite(population_total) || population_total <= 0))
-    stop("The common population total must be positive and finite", call. = FALSE)
-  compiled <- Map(function(spec, name, counts) {
-    .seg_compile(spec, checked$data, population, measures, variable = name,
-                   counts = counts)
-  }, variables, names(variables), count_data)
-  surface_info <- list(type = "raw", fallback = list(count = 0L), audit = NULL)
-  if (surface != "raw") {
-    # Gridding transports all count tables in one surface-construction pass.
-    # The first eligible population is a sufficient reference for kNN because
-    # its thresholds use each descriptor's mass, not this reference vector.
-    if (neighbors == "knn" && !supplied_population) population <- compiled[[1L]]$mass
-    prepared <- .seg_surface_variables(x, checked, variables, compiled, population,
-                                       measures, surface, dots, surface_audit, verbose)
-    checked <- prepared$checked
-    population <- prepared$population
-    compiled <- prepared$compiled
-    surface_info <- prepared$surface_info
+  case_info <- if (!is.null(case)) .seg_case_inputs(checked, case, variables,
+    population, if (relational) prepared_network$graph)
+  inputs <- if (is.null(case_info)) {
+    list(list(checked = checked, variables = variables, population = population))
+  } else case_info$inputs
+  layout <- if (!is.null(case_info)) .seg_case_layout(inputs)
+  prepared_cases <- lapply(seq_along(inputs), function(k) {
+    input <- inputs[[k]]
+    prepared <- tryCatch(.seg_compile_input(input$checked, input$variables,
+      input$population, measures, neighbors, relational), error = function(e) {
+        if (is.null(case_info)) stop(e)
+        stop("Case '", as.character(case_info$ids[k]), "': ", conditionMessage(e),
+             call. = FALSE)
+      })
+    if (!is.null(layout))
+      prepared <- .seg_align_case(prepared, layout$positions[[k]], layout)
+    if (surface != "raw") {
+      if (neighbors == "knn" && !supplied_population)
+        prepared$population <- prepared$compiled[[1L]]$mass
+      source <- if (is.null(layout)) x else
+        sf::st_sf(geometry = layout$geometry)
+      smoothed <- .seg_surface_variables(source, prepared$checked,
+        prepared$variables, prepared$compiled, prepared$population,
+        measures, surface, dots, surface_audit, verbose)
+      prepared[names(smoothed)] <- smoothed
+      if (!is.null(layout) && surface_audit)
+        prepared$surface_info$source_rows <- input$rows[
+          match(seq_len(layout$n), layout$positions[[k]])]
+    }
+    prepared
+  })
+  if (!is.null(case_info) && surface != "raw") {
+    # Fallback cells can differ by case; their union supplies shared grid support.
+    layout <- .seg_case_layout(prepared_cases)
+    prepared_cases <- Map(.seg_align_case, prepared_cases,
+                          layout$positions, MoreArgs = list(layout = layout))
   }
+  if (!is.null(case_info)) {
+    checked <- prepared_cases[[1L]]$checked
+    if (relational) {
+      prepared_network$graph$node <- layout$nodes
+      prepared_network$ids <- prepared_network$graph$labels[layout$nodes + 1L]
+    }
+  } else checked <- prepared_cases[[1L]]$checked
+  population <- Reduce(`+`, lapply(prepared_cases, `[[`, "population"))
+  compiled <- do.call(c, lapply(prepared_cases, `[[`, "compiled"))
+  flat_variables <- do.call(c, lapply(prepared_cases, `[[`, "variables"))
+  if (!is.null(case_info)) {
+    names(compiled) <- make.unique(paste(
+      rep(as.character(case_info$ids), each = length(variables)),
+      names(compiled), sep = ":"))
+  }
+  surface_info <- prepared_cases[[1L]]$surface_info
   if (is.null(bands)) {
     if (neighbors == "knn") stop("Supply population-count 'bands' for kNN", call. = FALSE)
     bands <- .seg_distance_bands(checked$coords, population)
@@ -430,7 +472,7 @@ seg_measure <- function(
       keep_scores = .seg_or_default(spec$keep_scores, keep_scores),
       keep_contributions = .seg_or_default(spec$keep_contributions, keep_contributions))
     config
-  }, compiled, variables)
+  }, compiled, flat_variables)
   store_input <- any(vapply(compiled, function(z)
     z$settings$output != "indices", logical(1)))
   store_local_keys <- store_input || any(vapply(compiled, function(z)
@@ -444,9 +486,16 @@ seg_measure <- function(
                          match(neighbors, c("radius", "knn")) - 1L,
                          match(search, c("boost", "brute", "grid")) - 1L,
                          if (relational) prepared_network$graph else list(), grid)
-  analyses <- Map(.seg_prepare_result, engine$analyses, compiled,
-                  MoreArgs = list(bands = bands))
-  result <- list(analyses = analyses, bands = as.numeric(bands),
+  results <- lapply(seq_along(prepared_cases), function(k) {
+    prepared <- prepared_cases[[k]]
+    indices <- seq.int((k - 1L) * length(variables) + 1L, k * length(variables))
+    analyses <- Map(.seg_prepare_result, engine$analyses[indices], compiled[indices],
+                    MoreArgs = list(bands = bands))
+    names(analyses) <- names(variables)
+    checked <- prepared$checked
+    population <- prepared$population
+    surface_info <- prepared$surface_info
+    result <- list(analyses = analyses, bands = as.numeric(bands),
                  coords = if (store_input) checked$coords else NULL,
                  data = if (store_input) checked$data else NULL,
                  geometry = if (store_input) checked$geometry else NULL,
@@ -466,6 +515,29 @@ seg_measure <- function(
                                   population = if (neighbors == "knn") "variable" else NULL,
                                   engine = search, scope = scope),
                  diagnostics = engine$diagnostics, call = call)
-  class(result) <- "seg_result"
+    class(result) <- "seg_result"
+    if (!is.null(case_info)) {
+      result$case <- case_info$ids[k]
+      if (!is.null(result$data) && case_info$column %in% names(result$data) &&
+          anyNA(result$data[[case_info$column]]))
+        result$data[[case_info$column]] <- rep(result$case, nrow(result$data))
+      result$diagnostics$variables <- length(variables)
+      result$diagnostics$local_environments <- length(variables) * length(bands) *
+        nrow(prepared$checked$data)
+    }
+    result
+  })
+  if (is.null(case_info)) return(results[[1L]])
+  names(results) <- make.unique(as.character(case_info$ids))
+  result <- results[[1L]]
+  result$case <- result$analyses <- result$data <- result$population <- NULL
+  result$cases <- results
+  result$case_ids <- case_info$ids
+  result$surface_info <- list(type = surface,
+                             cases = lapply(results, `[[`, "surface_info"))
+  result$diagnostics <- engine$diagnostics
+  result$diagnostics$analyses <- length(compiled)
+  result$diagnostics$variables <- length(variables)
+  result$diagnostics$cases <- length(results)
   result
 }

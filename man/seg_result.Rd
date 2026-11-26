@@ -121,6 +121,11 @@ once when environments are stored. Each analysis records effective `scope`,
 `output`, `keep_scores`, and `keep_contributions` in `settings`. Global result
 settings record defaults; variable-specific settings take precedence. Shared
 inputs are retained once when any analysis stores environments.
+With a `case` specification, `cases` contains one `seg_result` per case and
+`case_ids` preserves the original ID values. Each case uses the same support
+row numbering; absent observations have zero population. Definitions and
+normalizers remain case-specific. Extracted tables include `case` for these
+results, including when a single case was supplied. Ordinary results omit it.
 Probability-valued local summaries, exposure/isolation, rank summaries, and
 interpolation shares are bounded to [0, 1] to correct floating-point endpoint
 overshoot. Interior values retain full precision; undefined results remain

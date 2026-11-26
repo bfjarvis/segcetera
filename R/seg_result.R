@@ -77,6 +77,11 @@
 #' `output`, `keep_scores`, and `keep_contributions` in `settings`. Global result
 #' settings record defaults; variable-specific settings take precedence. Shared
 #' inputs are retained once when any analysis stores environments.
+#' With a `case` specification, `cases` contains one `seg_result` per case and
+#' `case_ids` preserves the original ID values. Each case uses the same support
+#' row numbering; absent observations have zero population. Definitions and
+#' normalizers remain case-specific. Extracted tables include `case` for these
+#' results, including when a single case was supplied. Ordinary results omit it.
 #' Probability-valued local summaries, exposure/isolation, rank summaries, and
 #' interpolation shares are bounded to [0, 1] to correct floating-point endpoint
 #' overshoot. Interior values retain full precision; undefined results remain
@@ -164,6 +169,15 @@ NULL
 #' @method print seg_result
 #' @export
 print.seg_result <- function(x, ...) {
+  if (!is.null(x$cases)) {
+    cat("\nSpatial segregation across", length(x$cases), "cases and",
+        length(x$cases[[1L]]$analyses), "variables\n")
+    cat("Neighborhoods:", x$neighbors$type, "| search:", x$neighbors$engine, "\n")
+    cat("Bands:", paste(x$bands, collapse = ", "), "\n")
+    cat("Cases: ", paste(utils::head(as.character(x$case_ids), 6), collapse = ", "),
+        if (length(x$cases) > 6) ", ..." else "", "\n", sep = "")
+    return(invisible(x))
+  }
   cat("\nSpatial segregation across", length(x$analyses), "variables\n")
   cat("Neighborhoods:", x$neighbors$type, "| bands:", paste(x$bands, collapse = ", "), "\n")
   cat("Space:", x$neighbors$space, "| search:", x$neighbors$engine, "\n")
@@ -203,6 +217,22 @@ as.data.frame.seg_result <- function(x, row.names = NULL, optional = FALSE,
                  "interpolation", "scores", "contributions"), variables = NULL, bands = NULL) {
   .seg_unused_arguments(list(...))
   what <- match.arg(what)
+  if (!is.null(x$cases)) {
+    blocks <- lapply(x$cases, function(one) as.data.frame(one, what = what,
+      variables = variables, bands = bands, optional = optional))
+    columns <- unique(unlist(lapply(blocks, names), use.names = FALSE))
+    blocks <- lapply(blocks, function(block) {
+      for (column in setdiff(columns, names(block))) {
+        template <- blocks[[which(vapply(blocks, function(z)
+          column %in% names(z), logical(1)))[1L]]][[column]]
+        block[[column]] <- template[rep(NA_integer_, nrow(block))]
+      }
+      block[columns]
+    })
+    out <- do.call(rbind, blocks)
+    rownames(out) <- row.names
+    return(out)
+  }
   extract <- switch(what, indices = .seg_indices_rows,
     pairwise = .seg_pairwise_rows, exposure = .seg_exposure_rows,
     env = .seg_env_rows, diagnostics = .seg_diagnostic_rows,
@@ -258,6 +288,9 @@ as.data.frame.seg_result <- function(x, row.names = NULL, optional = FALSE,
   out <- if (length(rows)) do.call(rbind, rows) else schema
   if (what %in% c("env", "interpolation", "scores", "contributions") && !is.null(x$node_id)) {
     out$node <- x$node_id[out$location]
+  }
+  if (!is.null(x$case)) {
+    out <- data.frame(case = rep(x$case, nrow(out)), out, check.names = FALSE)
   }
   rownames(out) <- row.names
   out

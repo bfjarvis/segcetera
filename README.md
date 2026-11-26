@@ -269,6 +269,14 @@ Boost can be faster for narrow radius neighborhoods; explicit `search = "boost"`
 or `search = "brute"` lets you compare timings for your data. Known sparse
 lattices can use explicit `search = "grid"` or specify their `grid_size`.
 
+## Repeated measurements
+
+For repeated measurements on the same geography, specify a case column, such
+as `case = "year"`. Neighbor searches are shared while each case keeps its own
+population and reference distributions. Result tables add a `case` column;
+individual results are available in `result$cases`. See the
+[repeated-measurements guide](vignettes/segcetera-cases.Rmd).
+
 ## Network neighborhoods
 
 Supply an edge list to define proximity by shortest-path hops or travel costs.
