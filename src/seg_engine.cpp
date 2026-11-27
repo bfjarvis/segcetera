@@ -38,6 +38,9 @@ struct VariableAnalysis {
   arma::mat N;
   IntegerVector code, exposure_map, flags, env_map;
   IntegerVector split_intervals;
+  // Site membership preserves exact values and high-cardinality categories.
+  IntegerVector site_offsets, site_codes;
+  NumericVector site_mass;
   NumericVector T_i, P, z, env_probs;
   int env_type, env_columns;
   bool continuous, env_mean;
@@ -88,6 +91,11 @@ struct VariableAnalysis {
     env_columns = as<int>(config["env_columns"]);
     env_mean = as<bool>(config["env_mean"]);
     split_intervals = as<IntegerVector>(config["split_intervals"]);
+    if (config.containsElementNamed("site_offsets")) {
+      site_offsets = as<IntegerVector>(config["site_offsets"]);
+      site_codes = as<IntegerVector>(config["site_codes"]);
+      site_mass = as<NumericVector>(config["site_mass"]);
+    }
     M=P.size(); n_reporting_groups=labels.size();
     for (int f = 0; f < MeasureCount; ++f) selected[f] = flags[f] != 0;
     P_reporting.assign(n_reporting_groups, 0.0);
@@ -199,6 +207,12 @@ struct VariableAnalysis {
   }
 
   double focal(int i,int g) const {
+    if (site_offsets.size()) {
+      double total=0;
+      for(int r=site_offsets[i]; r<site_offsets[i+1]; ++r)
+        if(site_codes[r]==g) total+=site_mass[r];
+      return total;
+    }
     return N.n_rows ? N(i,g) : (code[i]==g ? T_i[i] : 0);
   }
 
@@ -283,6 +297,9 @@ struct VariableAnalysis {
   void seg_add_neighbor(std::vector<double>& counts, int id, double w) const {
     if (N.n_rows) {
       for (int g = 0; g < M; ++g) counts[g] += w * N(id, g);
+    } else if (site_offsets.size()) {
+      for(int r=site_offsets[id]; r<site_offsets[id+1]; ++r)
+        counts[site_codes[r]] += w * site_mass[r];
     } else if (code[id] >= 0) counts[code[id]] += w * T_i[id];
   }
 
@@ -301,9 +318,17 @@ struct VariableAnalysis {
     if (seg_uses_sparse_distribution()) {
       sparse.reserve(c.ids.size());
       for(std::size_t a=0;a<c.ids.size();++a) {
-        int id=c.ids[a], g=code[id];
-        double w=c.weights[a]*T_i[id];
-        if(g>=0 && w>0) {sparse.push_back({g,w});local+=w;}
+        const int id=c.ids[a];
+        if (site_offsets.size()) {
+          for (int r=site_offsets[id]; r<site_offsets[id+1]; ++r) {
+            const double w=c.weights[a]*site_mass[r];
+            if(w>0) sparse.push_back({site_codes[r],w});
+          }
+        } else {
+          const int g=code[id];
+          const double w=c.weights[a]*T_i[id];
+          if(g>=0 && w>0) sparse.push_back({g,w});
+        }
       }
       std::sort(sparse.begin(),sparse.end(),[](const std::pair<int,double>& a,
                  const std::pair<int,double>& b){return a.first<b.first;});
@@ -313,6 +338,7 @@ struct VariableAnalysis {
         else sparse[end++]=item;
       }
       sparse.resize(end);
+      for(const auto& item:sparse) local+=item.second;
       if(local>0) for(auto& item:sparse) item.second/=local;
     } else {
       p.assign(M,0);
@@ -471,6 +497,9 @@ struct VariableAnalysis {
       } else for(int g=0;g<M;++g) seg_add_group_mass(local_group,g,p[g]);
       if(N.n_rows) {
         for(int g=0;g<M;++g) seg_add_group_mass(focal_group,g,N(i,g));
+      } else if(site_offsets.size()) {
+        for(int r=site_offsets[i]; r<site_offsets[i+1]; ++r)
+          seg_add_group_mass(focal_group,site_codes[r],site_mass[r]);
       } else if(code[i]>=0) seg_add_group_mass(focal_group,code[i],T_i[i]);
       // Regional group totals are prepared once; accumulate focal counts here.
       if(indices && flags[Exposure]) for(int a=0;a<n_reporting_groups;++a) if(focal_group[a]>0) {

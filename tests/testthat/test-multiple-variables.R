@@ -232,7 +232,7 @@ test_that("mixed SF results, compact output, and search backends work together",
     b <- seg_measure(d,coords=c("x","y"),variables=variables,bands=c(1,3),neighbors=neighborhood,
                search="brute",output="full")
     expect_equal(a$analyses,b$analyses,tolerance=1e-12)
-    expect_equal(a$diagnostics$focal_searches,nrow(d))
+    expect_equal(a$diagnostics$focal_searches,nrow(unique(d[c("x", "y")])))
     expect_s3_class(sf::st_as_sf(a,variables="v",bands=3),"sf")
     expect_true(all(c("variable","location","category","value") %in%
                       names(as.data.frame(a,what="env"))))

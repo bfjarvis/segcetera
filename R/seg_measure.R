@@ -8,6 +8,13 @@
 #' calculation uses normalized biweight local environments with `power = 3`
 #' and radius neighborhoods.
 #'
+#' Repeated coordinates or identical geometries define one spatial site.
+#' Population and attribute distributions are combined within each site, and
+#' neighbor searches, weights, and local environments are calculated once per
+#' site. Exact continuous values are retained in the calculation. Stored inputs
+#' include a `site` vector mapping their rows to the returned site geometries,
+#' coordinates, and local results.
+#'
 #' By default, `seg_measure()` returns indices over default distance bands. These
 #' default bands are distance quantiles from a reproducible population-weighted
 #' sample of support points; see [seg_default_bands()] for the quantile defaults.
@@ -20,8 +27,9 @@
 #'
 #' When `neighbors = "knn"`, `bands` is interpreted as population-count
 #' thresholds before distance weighting. Each variable
-#' selects the requested eligible population, truncating the focal unit when
-#' needed and including equidistant boundary units proportionately. Neighboring
+#' selects the requested eligible population, taking a proportional fraction
+#' of the whole focal site's distribution when needed and including equidistant
+#' boundary sites proportionately. Neighboring
 #' units are added by representative-point distance. An unattainable threshold raises an error.
 #'
 #' Each measurement stores named variable results in `analyses`. With `case`,
@@ -61,8 +69,8 @@
 #'   distributions, and normalizers; searches are shared across cases. Support
 #'   rows are matched by exact geometry, coordinates, or network node.
 #'   Network input uses the node together with any supplied geometry/coordinates.
-#'   Repeated rows at a location are matched by occurrence within each case;
-#'   absent rows have zero population. Omitted radius bands use the pooled
+#'   Repeated rows at a location are combined within each case;
+#'   absent sites have zero population. Omitted radius bands use the pooled
 #'   case populations to select one shared set of distance quantiles. Results
 #'   retain individual `seg_result` objects in `cases`; extracted tables identify
 #'   their case in a `case` column. With `case = NULL`, the usual result structure
@@ -383,9 +391,10 @@ seg_measure <- function(
   case_info <- if (!is.null(case)) .seg_case_inputs(checked, case, variables,
     population, if (relational) prepared_network$graph)
   inputs <- if (is.null(case_info)) {
-    list(list(checked = checked, variables = variables, population = population))
+    list(list(checked = checked, variables = variables, population = population,
+              nodes = if (relational) prepared_network$graph$node))
   } else case_info$inputs
-  layout <- if (!is.null(case_info)) .seg_case_layout(inputs)
+  layout <- .seg_site_layout(inputs)
   prepared_cases <- lapply(seq_along(inputs), function(k) {
     input <- inputs[[k]]
     prepared <- tryCatch(.seg_prepare_population(input$checked, input$variables,
@@ -394,18 +403,19 @@ seg_measure <- function(
         stop("Case '", as.character(case_info$ids[k]), "': ", conditionMessage(e),
              call. = FALSE)
       })
-    if (!is.null(layout))
-      prepared <- .seg_align_case(prepared, layout$positions[[k]], layout)
+    prepared <- .seg_align_sites(prepared, layout$positions[[k]], layout)
     if (surface != "raw") {
       if (neighbors == "knn" && !supplied_population)
         prepared$population <- prepared$compiled[[1L]]$mass
-      source <- if (is.null(layout)) x else
-        sf::st_sf(geometry = layout$geometry)
+      source <- sf::st_sf(geometry = layout$geometry)
       smoothed <- .seg_surface_variables(source, prepared$checked,
         prepared$variables, prepared$compiled, prepared$population,
         surface, dots, surface_audit, verbose)
       prepared[names(smoothed)] <- smoothed
-      if (!is.null(layout) && surface_audit)
+      if (surface_audit && !is.null(prepared$input))
+        prepared$surface_info$source_records <- prepared$input
+      prepared$input <- NULL
+      if (!is.null(case_info) && surface_audit)
         prepared$surface_info$source_rows <- input$rows[
           match(seq_len(layout$n), layout$positions[[k]])]
     }
@@ -413,17 +423,15 @@ seg_measure <- function(
   })
   if (!is.null(case_info) && surface != "raw") {
     # Fallback cells can differ by case; their union supplies shared grid support.
-    layout <- .seg_case_layout(prepared_cases)
-    prepared_cases <- Map(.seg_align_case, prepared_cases,
+    layout <- .seg_site_layout(prepared_cases)
+    prepared_cases <- Map(.seg_align_sites, prepared_cases,
                           layout$positions, MoreArgs = list(layout = layout))
   }
-  if (!is.null(case_info)) {
-    checked <- prepared_cases[[1L]]$checked
-    if (relational) {
-      prepared_network$graph$node <- layout$nodes
-      prepared_network$ids <- prepared_network$graph$labels[layout$nodes + 1L]
-    }
-  } else checked <- prepared_cases[[1L]]$checked
+  checked <- prepared_cases[[1L]]$checked
+  if (relational) {
+    prepared_network$graph$node <- layout$nodes
+    prepared_network$ids <- prepared_network$graph$labels[layout$nodes + 1L]
+  }
   population <- Reduce(`+`, lapply(prepared_cases, `[[`, "population"))
   compiled <- do.call(c, lapply(prepared_cases, `[[`, "compiled"))
   flat_variables <- do.call(c, lapply(prepared_cases, `[[`, "variables"))

@@ -4,32 +4,34 @@
 library(ggplot2)
 library(dplyr)
 library(sf)
-library(terra)
 library(hexSticker)
-library(png)
+library(systemfonts)
 
 # Design parameters -----------------------------------------------------------
-word <- "spseg"
-point_layout <- "hexagonal" # "random" or "hexagonal"
-point_count <- 5000L # Exact for random; approximate for hexagonal
-point_size <- 0.6
+word <- "seg\n  cetera"
+point_layout <- "halton" # "random", "halton", "sobol", or "hexagonal"
+point_count <- 2^15L # Exact for random/quasi-random; approximate for hexagonal
+point_size <- 0.25
 seed <- 357
-noise <- 0.3
-letter_strength <- 2
+noise <- 0.01
+letter_strength <- 100
 center_strength <- 3 # Weight on background log-distance, outside letters
 radius <- 0.94
 colour_quantile <- 0.9
 viridis_option <- "D"
-word_bounds <- c(left = -0.84, right = 0.84, bottom = -0.42, top = 0.58)
-font_family <- "sans"
+word_bounds <- c(left = -0.65, right = 0.65, bottom = -0.5, top = 0.5)
+font_family <- "Helvetica Neue"
+font_style <- "Bold"
+outline_tolerance <- 0.1 # Curve approximation, in font points
 background <- "#101519"
 border_colour <- "#303940"
 border_size <- 0.65
 output_dpi <- 300
 output_file <- file.path("man", "figures", "logo.png")
 show_logo <- TRUE # Display in interactive Positron/R sessions
-shape1 <- 0.2
-shape2 <- 0.8
+beta_a <- 0.2
+beta_b <- 0.7
+line_height <- 0.7
 
 # Find the output location -----------------------------------------------------
 script <- grep("^--file=", commandArgs(), value = TRUE)
@@ -43,7 +45,7 @@ root <- if (length(script)) {
 output <- file.path(normalizePath(root), output_file)
 dir.create(dirname(output), recursive = TRUE, showWarnings = FALSE)
 
-# Only command-line runs need a temporary device for font measurements.
+# Use a temporary device for command-line sticker rendering.
 # Interactive runs retain the session's normal plot device for print(logo).
 if (!interactive()) {
   drawing_file <- tempfile(fileext = ".pdf")
@@ -52,30 +54,82 @@ if (!interactive()) {
 }
 
 # Turn the lettering into polygon shapes --------------------------------------
-mask_file <- tempfile(fileext = ".png")
-grDevices::png(mask_file, width = 1200, height = 500, res = 144, bg = "white")
-graphics::par(mar = rep(0, 4), family = font_family)
-graphics::plot.new()
-graphics::plot.window(c(-0.5, 0.5), c(-0.5, 0.5), xaxs = "i", yaxs = "i")
-font_size <- 0.94 / graphics::strwidth(word, font = 2)
-graphics::text(0, 0, word, font = 2, cex = font_size, adj = c(0.5, 0.5))
-invisible(grDevices::dev.off())
-mask_image <- png::readPNG(mask_file)
-unlink(mask_file)
-gray <- if (length(dim(mask_image)) == 2L) mask_image else mask_image[,, 1]
-letter_raster <- terra::rast(ifelse(gray < 0.5, 1, NA_real_))
-terra::ext(letter_raster) <- terra::ext(
-  word_bounds["left"],
-  word_bounds["right"],
-  word_bounds["bottom"],
-  word_bounds["top"]
+fonts <- systemfonts::system_fonts()
+font <- fonts[fonts$family == font_family & fonts$style == font_style, ]
+if (!nrow(font)) {
+  stop(
+    "Font unavailable: ",
+    font_family,
+    " ",
+    font_style,
+    ". Choose a family/style from systemfonts::system_fonts()."
+  )
+}
+font <- font[1L, ]
+
+shaped <- systemfonts::shape_string(
+  word,
+  path = font$path,
+  index = font$index,
+  size = 100,
+  lineheight = line_height
+)$shape
+outlines <- systemfonts::glyph_outline(
+  shaped$index,
+  path = font$path,
+  index = font$index,
+  size = 100,
+  tolerance = outline_tolerance
 )
-terra::crs(letter_raster) <- ""
-letter_shapes <- st_as_sf(terra::as.polygons(letter_raster, aggregate = TRUE))
+# Layout controls and spaces advance the text without contributing shapes.
+outlines <- outlines[!grepl("^[[:space:]]$", shaped$glyph[outlines$glyph]), ]
+if (!nrow(outlines)) {
+  stop("The lettering has no drawable glyph outlines.")
+}
+outlines$x <- outlines$x + shaped$x_offset[outlines$glyph]
+outlines$y <- outlines$y + shaped$y_offset[outlines$glyph]
+
+letter_geometry <- lapply(split(outlines, outlines$glyph), function(glyph) {
+  rings <- lapply(split(glyph, glyph$contour), function(contour) {
+    xy <- as.matrix(contour[c("x", "y")])
+    if (any(xy[1L, ] != xy[nrow(xy), ])) {
+      xy <- rbind(xy, xy[1L, ])
+    }
+    st_sfc(st_polygon(list(xy)))
+  })
+  # Even-odd filling retains counters (letter holes) and detached components.
+  Reduce(st_sym_difference, rings)[[1L]]
+})
+letter_geometry <- st_sfc(letter_geometry)
+
+# Fit the complete word into its bounds while preserving font proportions.
+bounds <- st_bbox(letter_geometry)
+text_center <- c(
+  mean(bounds[c("xmin", "xmax")]),
+  mean(bounds[c("ymin", "ymax")])
+)
+target_center <- c(
+  mean(word_bounds[c("left", "right")]),
+  mean(word_bounds[c("bottom", "top")])
+)
+text_scale <- min(
+  (word_bounds["right"] - word_bounds["left"]) /
+    (bounds["xmax"] - bounds["xmin"]),
+  (word_bounds["top"] - word_bounds["bottom"]) /
+    (bounds["ymax"] - bounds["ymin"])
+)
+letter_shapes <- st_sf(
+  geometry = (letter_geometry - text_center) *
+    as.numeric(text_scale) +
+    target_center
+)
 
 # Choose point locations -------------------------------------------------------
 set.seed(seed)
-point_layout <- match.arg(point_layout, c("random", "hexagonal"))
+point_layout <- match.arg(
+  point_layout,
+  c("random", "halton", "sobol", "hexagonal")
+)
 if (point_layout == "random") {
   dots <- tibble(
     x = runif(
@@ -87,6 +141,31 @@ if (point_layout == "random") {
   ) |>
     filter(abs(y) <= radius - abs(x) / sqrt(3)) |>
     slice_head(n = point_count)
+} else if (point_layout %in% c("halton", "sobol")) {
+  if (!requireNamespace("randtoolbox", quietly = TRUE)) {
+    stop("Halton and Sobol layouts require the 'randtoolbox' package.")
+  }
+  # Fixed low-discrepancy sequences cover the bounding box evenly.
+  # Clip to the same hexagon as the other layouts, then retain the requested N.
+  sequence_generator <- switch(
+    point_layout,
+    halton = randtoolbox::halton,
+    sobol = randtoolbox::sobol
+  )
+  candidate_count <- 2 * point_count
+  repeat {
+    unit_points <- sequence_generator(candidate_count, dim = 2, init = TRUE)
+    dots <- tibble(
+      x = (unit_points[, 1] - 0.5) * sqrt(3) * radius,
+      y = (unit_points[, 2] - 0.5) * 2 * radius
+    ) |>
+      filter(abs(y) <= radius - abs(x) / sqrt(3))
+    if (nrow(dots) >= point_count) {
+      break
+    }
+    candidate_count <- 2 * candidate_count
+  }
+  dots <- slice_head(dots, n = point_count)
 } else {
   domain <- st_as_sfc(st_bbox(c(
     xmin = -sqrt(3) * radius / 2,

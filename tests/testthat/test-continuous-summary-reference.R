@@ -229,7 +229,7 @@ test_that("individual and count inputs give the same local and grouped summaries
     scores = c(10, 20, 30, 40),
     summary = list(type = "quantiles", probs = 0.5, mean_rank = TRUE)
   )), coords = c("x", "y"), bands = 0, weighting = "unweighted", output = "full")
-  expect_equal(individual$analyses$income$env[[1]][c(1, 5), ],
+  expect_equal(individual$analyses$income$env[[1]],
     aggregate$analyses$income$env[[1]], tolerance = 1e-12)
   expect_equal(individual$analyses$income$rank_summary[[1]],
     aggregate$analyses$income$rank_summary[[1]], tolerance = 1e-12)

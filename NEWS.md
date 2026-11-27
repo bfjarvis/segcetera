@@ -1,5 +1,9 @@
 # segcetera (development version)
 
+- Repeated locations now share one spatial site, neighbor search, and local
+  environment. Population-kNN includes a proportional fraction of the whole
+  focal site's distribution; exact continuous values are preserved. Retained
+  inputs include a `site` mapping to compact site-level local results.
 - Simplified internal input preparation and result assembly, consolidated table
   binding, and resolved row weights and measure selections before splitting
   cases. Surface construction and reporting helpers now live with their owners.

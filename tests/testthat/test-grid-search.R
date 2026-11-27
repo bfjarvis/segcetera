@@ -23,7 +23,7 @@ test_that("grid offsets reproduce radius and population-kNN analyses", {
         grid <- run("grid")
         expect_equal(grid$analyses, run("boost")$analyses, tolerance = 1e-11)
         expect_equal(grid$analyses, run("brute")$analyses, tolerance = 1e-11)
-        expect_equal(grid$diagnostics$focal_searches, n)
+        expect_equal(grid$diagnostics$focal_searches, nrow(unique(xy)))
         expect_equal(grid$diagnostics$grid$cell_size, c(2, 3))
         expect_equal(grid$diagnostics$grid$dimensions, c(4L, 3L))
       }

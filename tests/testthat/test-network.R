@@ -130,7 +130,7 @@ test_that("transit nodes, parallel edges and shared observation nodes conserve m
   expect_equal(r$network$nodes,3)
   k <- seg_measure(d,vars,network=seg_network(edges,cost="cost"),node_id="node",
     neighbors="knn",bands=1.5,weighting="unweighted",output="full")
-  expect_equal(unname(k$analyses$g$env[[1]][1,]),c(2/3,1/3))
+  expect_equal(unname(k$analyses$g$env[[1]][1,]),c(.5,.5))
   expect_equal(k$analyses$g$knn$min_population,1.5)
   expect_setequal(as.data.frame(k,what="env")$node,c("a","b"))
 })

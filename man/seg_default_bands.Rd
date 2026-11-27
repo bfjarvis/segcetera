@@ -43,6 +43,8 @@ a fixed local seed and population weights when supplied. The caller's
 random-number state is preserved. When all points fit within `n`, every
 point is used. Distance quantiles are unweighted, and coincident-point
 distances are omitted.
+Repeated coordinates or identical geometries are combined into unique support
+sites before sampling, summing their population weights.
 }
 \examples{
 points <- data.frame(x = 1:10, y = 0, residents = 1:10)

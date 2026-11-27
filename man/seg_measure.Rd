@@ -69,8 +69,8 @@ measurements on common geography. Each case has its own population,
 distributions, and normalizers; searches are shared across cases. Support
 rows are matched by exact geometry, coordinates, or network node.
 Network input uses the node together with any supplied geometry/coordinates.
-Repeated rows at a location are matched by occurrence within each case;
-absent rows have zero population. Omitted radius bands use the pooled
+Repeated rows at a location are combined within each case;
+absent sites have zero population. Omitted radius bands use the pooled
 case populations to select one shared set of distance quantiles. Results
 retain individual `seg_result` objects in `cases`; extracted tables identify
 their case in a `case` column. With `case = NULL`, the usual result structure
@@ -241,6 +241,13 @@ and segregation indices are produced by a unified C++ engine. The default
 calculation uses normalized biweight local environments with `power = 3`
 and radius neighborhoods.
 
+Repeated coordinates or identical geometries define one spatial site.
+Population and attribute distributions are combined within each site, and
+neighbor searches, weights, and local environments are calculated once per
+site. Exact continuous values are retained in the calculation. Stored inputs
+include a `site` vector mapping their rows to the returned site geometries,
+coordinates, and local results.
+
 By default, `seg_measure()` returns indices over default distance bands. These
 default bands are distance quantiles from a reproducible population-weighted
 sample of support points; see [seg_default_bands()] for the quantile defaults.
@@ -253,8 +260,9 @@ support points, or just the focal unit when coordinates are distinct.
 
 When `neighbors = "knn"`, `bands` is interpreted as population-count
 thresholds before distance weighting. Each variable
-selects the requested eligible population, truncating the focal unit when
-needed and including equidistant boundary units proportionately. Neighboring
+selects the requested eligible population, taking a proportional fraction
+of the whole focal site's distribution when needed and including equidistant
+boundary sites proportionately. Neighboring
 units are added by representative-point distance. An unattainable threshold raises an error.
 
 Each measurement stores named variable results in `analyses`. With `case`,

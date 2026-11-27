@@ -86,7 +86,7 @@ test_that("weighted long-form categories agree with wide neighborhood counts", {
       tolerance = 1e-12)
     for (b in seq_along(counts$bands)) {
       expect_equal(unname(members$analyses$race$env[[b]]),
-        unname(counts$analyses$race$env[[b]][rows, , drop = FALSE]),
+        unname(counts$analyses$race$env[[b]]),
         tolerance = 1e-12)
     }
   }

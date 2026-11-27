@@ -6,6 +6,8 @@
 #' random-number state is preserved. When all points fit within `n`, every
 #' point is used. Distance quantiles are unweighted, and coincident-point
 #' distances are omitted.
+#' Repeated coordinates or identical geometries are combined into unique support
+#' sites before sampling, summing their population weights.
 #'
 #' @param x A numeric two-column coordinate matrix, a data frame with columns
 #'   selected by `coords`, or an [sf::sf] object. Polygon inputs use the
@@ -37,7 +39,12 @@ seg_default_bands <- function(x, coords = NULL, population = NULL, n = 500,
     stop("'probs' must contain probabilities in [0, 1]", call. = FALSE)
   checked <- .seg_geometry(x, NULL, coords, match.arg(polygon_points))
   weights <- .seg_mass(population, checked$data, nrow(checked$coords))
-  .seg_distance_bands(checked$coords, weights, n, probs)
+  layout <- .seg_site_layout(list(list(checked = checked)))
+  if (layout$n < length(weights)) {
+    totals <- rowsum(weights, layout$positions[[1L]], reorder = FALSE)
+    weights <- totals[, 1L]
+  }
+  .seg_distance_bands(layout$coords, weights, n, probs)
 }
 
 # Shared by seg_measure() and seg_default_bands() so both use the same band rule

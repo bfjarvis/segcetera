@@ -1,4 +1,4 @@
-# segcetera
+# segcetera <img src="man/figures/logo.png" align="right" width="180" alt="segcetera logo" />
 
 **segcetera** is an R package for measuring segregation in individual records,
 small-area population counts, and networks. It implements categorical, ordinal,
@@ -269,6 +269,26 @@ or network searches. The chosen backend is recorded in `result$neighbors$engine`
 Boost can be faster for narrow radius neighborhoods; explicit `search = "boost"`
 or `search = "brute"` lets you compare timings for your data. Known sparse
 lattices can use explicit `search = "grid"` or specify their `grid_size`.
+
+## Shared locations
+
+People recorded at the same coordinates, such as 100 m grid-cell centroids,
+share one spatial site. The engine combines their attribute distributions and
+calculates one local environment per site. Population-kNN takes a proportional
+fraction of the whole focal site's population when it exceeds the threshold.
+Exact continuous values remain available to the calculation.
+
+With `output = "full"` or `"localenv"`, `result$data` retains the input records
+and `result$site` maps those rows to the site-level coordinates, geometries,
+population totals, and local results. For example, expand one retained environment
+back to the input records with:
+
+```r
+result$analyses$group$env[[1]][result$site, , drop = FALSE]
+```
+
+Identical polygon geometries likewise share a site. Distinct shapes retain their
+own sites, even when their representative points coincide.
 
 ## Repeated measurements
 

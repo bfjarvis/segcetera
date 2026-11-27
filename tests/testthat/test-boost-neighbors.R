@@ -47,17 +47,19 @@ test_that("brute squared-distance filters preserve rounded radius boundaries", {
         counts <- (distances <= band) %*% as.matrix(d[c("a", "b")])
         unname(counts / rowSums(counts))
       })
-      expect_equal(unname(lapply(brute$analyses$g$env, unname)), expected)
+      expect_equal(unname(lapply(brute$analyses$g$env,
+        function(z) unname(z[brute$site, , drop = FALSE]))), expected)
     }
   }
 })
 
-test_that("coincident observations share a fractional boundary after the focal", {
+test_that("coincident observations share the whole focal site's composition", {
   d <- data.frame(x=0,y=0,g=c("a","b","b","b"))
   r <- seg_measure(d,list(g=seg_categorical(vars="g")),coords=c("x","y"),
              neighbors="knn",bands=2,weighting="unweighted",output="full")
-  expect_equal(unname(r$analyses$g$env[[1]][1,]),c(.5,.5))
-  expect_equal(unname(r$analyses$g$env[[1]][2,]),c(1/6,5/6))
+  expect_equal(unname(r$analyses$g$env[[1]][1,]),c(.25,.75))
+  expect_equal(nrow(r$analyses$g$env[[1]]), 1L)
+  expect_equal(r$site, rep(1L, 4))
   expect_equal(r$analyses$g$knn$min_population,2)
   expect_equal(r$analyses$g$knn$max_population,2)
 })
@@ -74,7 +76,7 @@ test_that("radius band reuse preserves independent results and requested order",
       )
       joint <- run(bands)
       expect_identical(joint$bands, bands)
-      expect_equal(joint$diagnostics$focal_searches, nrow(d))
+      expect_equal(joint$diagnostics$focal_searches, nrow(unique(d[c("x", "y")])))
       for (b in seq_along(bands)) {
         separate <- run(bands[b])$analyses$g
         expect_identical(joint$analyses$g$env[[b]], separate$env[[1]])
@@ -139,7 +141,8 @@ test_that("kernel powers and reused radius buffers match direct weighted counts"
         })
         result <- seg_measure(d, vars, coords = c("x", "y"), bands = bands,
           weighting = kernel, power = power, normalize = normalize, output = "full")
-        expect_equal(unname(lapply(result$analyses$g$env, unname)), expected,
+        expect_equal(unname(lapply(result$analyses$g$env,
+          function(z) unname(z[result$site, , drop = FALSE]))), expected,
                      tolerance = 1e-12)
       }
     }

@@ -69,7 +69,7 @@ test_that("case alignment handles row order, missing support, and repeated point
       list(g = seg_categorical("g", weights = c(5, 0, 4))),
       coords = c("x", "y"), neighbors = mode, bands = bands, output = "full")
     expect_equal(r$cases[[2]]$analyses, expected$analyses)
-    expect_equal(r$diagnostics$focal_searches, 3)
+    expect_equal(r$diagnostics$focal_searches, 2)
   }
 })
 

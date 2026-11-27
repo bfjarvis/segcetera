@@ -97,10 +97,10 @@ as.data.frame(nearest, what = "diagnostics")
 
 Cases are aligned by exact geometry, coordinates, or network node. Their row
 order may differ. Use common, harmonized boundaries for polygon cases.
-Repeated observations at a location use occurrence slots
-within each case, preserving the focal-first rule for coincident microdata.
-An absent slot has zero population; its local composition can still reflect
-nearby populated slots. Such rows have zero population weight in overall
+Repeated observations at a location contribute to one shared spatial site
+within each case. Its full attribute distribution defines the focal composition.
+An absent site has zero population; its local composition can still reflect
+nearby populated sites. Such sites have zero population weight in overall
 indices. Supplied rows with missing values follow the variable's `na.action`.
 
 Omitted radius bands are calculated once from the common support with pooled

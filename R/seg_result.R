@@ -82,7 +82,9 @@
     checked <- prepared$checked
     result <- list(analyses = case_analyses, bands = bands,
       coords = if (store_input) checked$coords else NULL,
-      data = if (store_input) checked$data else NULL,
+      data = if (store_input) .seg_or_default(prepared$input$data, checked$data) else NULL,
+      site = if (store_input) .seg_or_default(prepared$input$site,
+                                             seq_len(nrow(checked$data))) else NULL,
       geometry = if (store_input) checked$geometry else NULL,
       population = if (store_input) prepared$population else NULL,
       crs = checked$crs, weighting = settings$weighting, power = settings$power,
@@ -110,7 +112,7 @@
   if (is.null(case_info)) return(results[[1L]])
   names(results) <- make.unique(as.character(case_info$ids))
   result <- results[[1L]]
-  result$case <- result$analyses <- result$data <- result$population <- NULL
+  result$case <- result$analyses <- result$data <- result$population <- result$site <- NULL
   result$cases <- results
   result$case_ids <- case_info$ids
   result$surface_info <- list(type = settings$surface,
@@ -140,6 +142,11 @@
 #' row numbering; absent observations have zero population. Definitions and
 #' normalizers remain case-specific. Extracted tables include `case` for these
 #' results, including when a single case was supplied. Ordinary results omit it.
+#' Local results contain one row per unique spatial site. When input data are
+#' retained, `data` preserves the supplied records for repeated locations and
+#' `site` maps each stored data row to a row of `coords`, `geometry`, `population`,
+#' and the local-result matrices. Scores and additive contributions are site-level;
+#' their focal weights are the summed eligible populations at each site.
 #' Probability-valued local summaries, exposure/isolation, rank summaries, and
 #' interpolation shares are bounded to [0, 1] to correct floating-point endpoint
 #' overshoot. Interior values retain full precision; undefined results remain
