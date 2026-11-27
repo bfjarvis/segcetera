@@ -1,2 +1,0 @@
-"0","pairwise_indices <- as.data.frame(providence_seg, what = ""pairwise"")"
-"0","head(pairwise_indices)"

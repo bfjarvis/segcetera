@@ -1,4 +1,0 @@
-"0",""
-"0","auck_grid_env<-as.data.frame(auck_grid_seg,what=""env"",shape=""long"") "
-"0","auck_grid_env$Total<-with(auck_grid_env, Korean+Non_Korean)"
-"0","auck_grid_env$Korean_Share <- with(auck_grid_env,Korean/Total)"

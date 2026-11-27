@@ -1,6 +1,0 @@
-"0","ggplot(local_maps) +"
-"0","  geom_sf(aes(color = Hispanic_Share),size=0.1) +"
-"0","  facet_wrap(~ band,nrow=2) +"
-"0","  scale_fill_viridis_c(labels = function(x) paste0(round(100 * x), ""%""),na.value = 'gray70') +"
-"0","  labs(fill = ""Hispanic share"") +"
-"0","  theme_minimal()"

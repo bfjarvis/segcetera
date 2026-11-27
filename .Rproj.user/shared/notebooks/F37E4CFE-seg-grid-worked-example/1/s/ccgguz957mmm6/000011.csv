@@ -1,8 +1,0 @@
-"0",""
-"0","stopifnot(isTRUE(all.equal("
-"0","  weighted_plot_data |> filter(source == ""dplyr"") |> arrange(id) |>"
-"0","    select(A, B),"
-"0","  weighted_plot_data |> filter(source == ""spseg"") |> arrange(id) |>"
-"0","    select(A, B),"
-"0","  tolerance = 1e-12"
-"0",")))"

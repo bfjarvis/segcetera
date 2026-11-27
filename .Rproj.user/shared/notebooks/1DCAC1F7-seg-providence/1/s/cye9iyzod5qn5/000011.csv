@@ -1,4 +1,0 @@
-"0",""
-"0","expected_pairs <- choose(length(group_cols), 2)"
-"0","stopifnot(nrow(pairwise_indices) == length(bands) * 3 * expected_pairs)"
-"0","stopifnot(all(is.finite(pairwise_indices$value)))"

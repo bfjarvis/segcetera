@@ -1,8 +1,0 @@
-"0","auck_pycno_seg <- spseg("
-"0","  auck[, c(""Korean"", ""Non_Korean"")],"
-"0","  surface = ""pycno"","
-"0","  surface_geometry = 'polygons',"
-"0","  celldim = 200,"
-"0","  bands = c(1,2000, 5000),"
-"0","  output = ""full"""
-"0",")"

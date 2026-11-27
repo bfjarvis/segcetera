@@ -1,5 +1,0 @@
-"0","ggplot(auck) +"
-"0","  geom_sf(aes(fill = Korean), color = NA) +"
-"0","  scale_fill_viridis_c() +"
-"0","  labs(fill = ""Korean residents"") +"
-"0","  theme_minimal()"
