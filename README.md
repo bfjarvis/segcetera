@@ -1,4 +1,6 @@
-# segcetera <img src="man/figures/logo.png" align="right" width="180" alt="segcetera logo" />
+# segcetera 
+
+<img src="man/figures/logo.png" align="right" width="240" alt="segcetera logo" />
 
 **segcetera** is an R package for measuring segregation in individual records,
 small-area population counts, and networks. It implements categorical, ordinal,
