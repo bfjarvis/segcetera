@@ -1,0 +1,7 @@
+"0","weighted_calc <- calculate_indices("
+"0","  weighted_env |> select(id, A, B),"
+"0","  ""Bandwidth 1, exponential"""
+"0",")"
+"0",""
+"0","weighted_calc$units |>"
+"0","  select(id, t_i, A, B, p_A, p_B, E_i, H_contribution, D_contribution)"

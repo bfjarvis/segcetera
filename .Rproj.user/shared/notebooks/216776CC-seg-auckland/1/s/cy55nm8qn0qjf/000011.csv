@@ -1,0 +1,4 @@
+"0",""
+"0","auck_pycno_env<-as.data.frame(auck_pycno_seg,what=""env"",shape=""long"") "
+"0","auck_pycno_env$Total<-with(auck_pycno_env, Korean+Non_Korean)"
+"0","auck_pycno_env$Korean_Share <- with(auck_pycno_env,Korean/Total)"

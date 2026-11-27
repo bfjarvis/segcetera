@@ -1,0 +1,5 @@
+"0","ggplot(auck) +"
+"0","  geom_sf(aes(fill = korean_share), color = NA) +"
+"0","  scale_fill_viridis_c(labels = function(x) paste0(round(100 * x, 1), ""%"")) +"
+"0","  labs(fill = ""Korean share"") +"
+"0","  theme_minimal()"

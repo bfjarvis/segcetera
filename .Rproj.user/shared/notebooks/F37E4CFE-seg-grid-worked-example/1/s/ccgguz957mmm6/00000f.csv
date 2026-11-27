@@ -1,0 +1,3 @@
+"0","weighted_plot_data <- local_env_plot_data(weighted_env, spseg_weighted)"
+"0",""
+"0","plot_local_env_comparison(weighted_plot_data)"

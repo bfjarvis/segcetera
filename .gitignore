@@ -1,5 +1,5 @@
-*.Rproj*
-*.code_workspace*
+*.Rproj
+*.code_workspace
 .Rhistory
 .RData
 .Ruserdata

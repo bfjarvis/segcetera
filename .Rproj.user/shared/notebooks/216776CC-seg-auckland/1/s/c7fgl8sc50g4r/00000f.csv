@@ -1,0 +1,7 @@
+"0","auck_grid_seg <- spseg("
+"0","  auck[, c(""Korean"", ""Non_Korean"")],"
+"0","  surface = ""grid"","
+"0","  cellsize = 400,"
+"0","  bands = c(1, 2000, 5000),"
+"0","  output = ""full"""
+"0",")"

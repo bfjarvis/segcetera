@@ -1,0 +1,4 @@
+"0","raw_env <- grid |>"
+"0","  select(id, A, B)"
+"0",""
+"0","raw_env"
