@@ -1,28 +1,32 @@
 # segcetera 
 
-<img src="man/figures/logo.png" align="right" width="240" alt="segcetera logo" />
+<img src="man/figures/logo.png" align="right" width="360" alt="segcetera logo" />
 
 **segcetera** is an R package for measuring segregation in individual records,
 small-area population counts, and networks. It implements categorical, ordinal,
 and continuous segregation measures based on the work of Reardon and colleagues,
-with a common interface for geographic and network neighborhoods.
+with a common interface for analyzing segregation in geographic and network data.
 
-Use it to study how segregation changes with neighborhood scale, describe the
-population surrounding each location, and calculate groups' exposure to one
-another. Examples include segregation by ethnicity, education, and income.
+Use it to study how segregation changes with neighborhood scale, describe the 
+population surrounding each location, rasterize your population, perform repeated 
+measures over time, and calculate groups' exposures to one another. 
 
-segcetera provides:
+Importantly, segcetera is designed with speed and efficiency in mind. The goal 
+has been to enable workflows for population scale data sets, with records 
+that span multiple, repeated measurement instances.
 
-- Dissimilarity, information theory, relative diversity, and square-root indices,
+segcetera supports:
+
+- Dissimilarity, information theory, relative diversity, and n-root indices,
   plus exposure and isolation summaries.
 - Fixed-distance and population nearest-neighbor neighborhoods, with spatial
   weighting options.
 - Regular-grid searches that reuse offsets and radius weights across locations.
 - Analysis of several variables in one call, sharing neighborhood searches.
-- Local population compositions and income-rank summaries, with tabular and
-  spatial outputs for plotting.
-- Polygon population surfaces and neighborhoods defined by network hops or
-  travel costs.
+- Local population compositions and continuous-rank summaries, with tabular and
+  spatial outputs for downstream uses.
+- Rasterization and pycnophylactic smoothing of polygon population data.
+- Neighborhoods defined by network hops or travel costs.
 
 ## Installation
 
